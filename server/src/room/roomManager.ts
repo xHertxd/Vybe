@@ -1,452 +1,976 @@
-import { RoomState, RoomUser, UnifiedMediaItem, PlaybackState, RoomSettings } from '../types.js';
-import { PRESET_TRACKS } from '../media/mediaResolver.js';
-import { SyncEngine } from '../sync/syncEngine.js';
 import crypto from 'crypto';
+import type {
+  MediaItem,
+  MediaItemInput,
+  PlaybackState,
+  RoomMember,
+  RoomSettings,
+  RoomState,
+  RoomUser,
+  MediaProvider,
+} from '../types.js';
+import { MediaSynchronizationEngine } from '../sync/mediaSynchronizationEngine.js';
+import { UnifiedMediaQueue } from '../media/unifiedMediaQueue.js';
 
-interface ActiveRoomInternal {
-  state: RoomState;
+interface InternalRoom {
+  state: Omit<RoomState, 'users'> & { users: RoomMember[] };
   disconnectTimers: Map<string, NodeJS.Timeout>;
-  roomCloseTimer: NodeJS.Timeout | null;
+  trackEndTimer: NodeJS.Timeout | null;
+  lastActivity: number;
 }
 
+export interface RoomManagerHooks {
+  playbackSync?: (roomCode: string, playback: PlaybackState) => void;
+  roomUpdated?: (roomCode: string, state: RoomState) => void;
+  queueUpdated?: (roomCode: string, queue: MediaItem[], currentIndex: number) => void;
+  adminChanged?: (roomCode: string, admin: RoomUser) => void;
+  roomClosed?: (roomCode: string, reason: 'empty' | 'ended' | 'expired') => void;
+}
+
+export interface RoomManagerOptions {
+  disconnectGraceMs: number;
+  maxUsersPerRoom: number;
+  maxQueueLength: number;
+}
+
+export type RoomErrorCode =
+  | 'VALIDATION'
+  | 'NOT_FOUND'
+  | 'FORBIDDEN'
+  | 'CONFLICT'
+  | 'FULL'
+  | 'EXPIRED';
+
+export class RoomError extends Error {
+  constructor(
+    message: string,
+    public readonly code: RoomErrorCode = 'VALIDATION'
+  ) {
+    super(message);
+    this.name = 'RoomError';
+  }
+}
+
+const USERNAME_RE = /^[A-Za-z]{2,20}$/;
+const ROOM_CODE_RE = /^\d{6}$/;
+
 export class RoomManager {
-  private rooms: Map<string, ActiveRoomInternal> = new Map();
+  private readonly rooms = new Map<string, InternalRoom>();
+  private hooks: RoomManagerHooks = {};
 
-  // 25 seconds grace period for temporary network drops or page reloads
-  private readonly DISCONNECT_GRACE_PERIOD_MS = 25000;
+  constructor(
+    private readonly sync: MediaSynchronizationEngine,
+    private readonly options: RoomManagerOptions
+  ) {}
 
-  /**
-   * Generates a random, unique 6-digit numeric room code.
-   */
+  public setHooks(hooks: RoomManagerHooks): void {
+    this.hooks = hooks;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Codes & validation
+  // ---------------------------------------------------------------------------
+
   public generateUniqueRoomCode(): string {
-    let attempts = 0;
-    while (attempts < 1000) {
-      // 100000 to 999999
-      const code = Math.floor(100000 + Math.random() * 900000).toString();
-      if (!this.rooms.has(code)) {
-        return code;
-      }
-      attempts++;
+    for (let attempt = 0; attempt < 900_000; attempt += 1) {
+      const code = String(crypto.randomInt(100_000, 1_000_000));
+      if (!this.rooms.has(code)) return code;
     }
-    // Fallback if density is high
-    return Math.floor(100000 + (Date.now() % 900000)).toString();
+    throw new RoomError('No room codes are available right now. Please try again.', 'FULL');
   }
 
-  /**
-   * Validates room code format (must be exactly 6 numeric digits).
-   */
-  public isValidRoomCode(code: string): boolean {
-    return /^\d{6}$/.test(code);
+  public isValidRoomCode(code: unknown): code is string {
+    return typeof code === 'string' && ROOM_CODE_RE.test(code);
   }
 
-  /**
-   * Validates username (alphabets only: A-Z, a-z).
-   */
-  public isValidUsername(username: string): boolean {
-    return /^[a-zA-Z]+$/.test(username.trim());
+  public validateUsername(username: unknown): string {
+    if (typeof username !== 'string') {
+      throw new RoomError('Please enter a username.', 'VALIDATION');
+    }
+    const clean = username.trim();
+    if (!clean) throw new RoomError('Please enter a username.', 'VALIDATION');
+    if (!USERNAME_RE.test(clean)) {
+      throw new RoomError(
+        'Usernames must be 2–20 characters and contain letters only (A–Z).',
+        'VALIDATION'
+      );
+    }
+    return clean;
   }
 
-  /**
-   * Checks if room exists and is active.
-   */
   public roomExists(code: string): boolean {
     return this.rooms.has(code);
   }
 
-  /**
-   * Gets clean room state for clients.
-   */
-  public getRoomState(code: string): RoomState | null {
-    const internal = this.rooms.get(code);
-    if (!internal) return null;
-    return internal.state;
-  }
+  // ---------------------------------------------------------------------------
+  // Room lifecycle
+  // ---------------------------------------------------------------------------
 
-  /**
-   * Creates a new room with default preset tracks and initial admin.
-   */
   public createRoom(
-    roomCode: string,
-    creatorUsername: string,
-    socketId: string,
-    existingUserId?: string
-  ): { user: RoomUser; state: RoomState } {
-    if (!this.isValidRoomCode(roomCode)) {
-      throw new Error('Room code must be a 6-digit number.');
-    }
-    if (!this.isValidUsername(creatorUsername)) {
-      throw new Error('Username must contain alphabetic characters only (A-Z, a-z).');
-    }
-    if (this.rooms.has(roomCode)) {
-      throw new Error(`Room with code ${roomCode} already exists.`);
-    }
-
-    const userId = existingUserId || crypto.randomUUID();
-    const adminUser: RoomUser = {
-      id: userId,
-      socketId,
-      username: creatorUsername.trim(),
-      isAdmin: true,
-      isOnline: true,
-      lastSeen: Date.now(),
-      ping: 0,
-      drift: 0
-    };
-
-    // Initialize room with initial queue from presets for quick immediate playback
-    const initialQueue: UnifiedMediaItem[] = PRESET_TRACKS.map((preset, idx) => ({
-      ...preset,
-      id: `queue-${Date.now()}-${idx}`,
-      addedBy: creatorUsername.trim(),
-      addedAt: Date.now()
-    }));
-
-    const currentTrack = initialQueue[0] || null;
-
-    const initialPlayback: PlaybackState = {
-      status: 'paused',
-      currentTrack,
-      position: 0,
-      serverTimestamp: Date.now(),
-      scheduledStartTime: null,
-      playbackRate: 1.0
-    };
-
-    const initialSettings: RoomSettings = {
-      repeatMode: 'all',
-      isShuffle: false,
-      sharedVolume: 100
-    };
-
-    const roomState: RoomState = {
-      roomCode,
-      adminId: userId,
-      createdAt: Date.now(),
-      playback: initialPlayback,
-      queue: initialQueue,
-      currentIndex: 0,
-      users: [adminUser],
-      settings: initialSettings
-    };
-
-    this.rooms.set(roomCode, {
-      state: roomState,
-      disconnectTimers: new Map(),
-      roomCloseTimer: null
-    });
-
-    return { user: adminUser, state: roomState };
-  }
-
-  /**
-   * Handles user joining a room or auto-creating if room does not exist.
-   */
-  public joinOrCreateRoom(
     roomCode: string,
     username: string,
     socketId: string,
     userId?: string
-  ): { user: RoomUser; state: RoomState; isNewRoom: boolean; reconnected: boolean } {
+  ): { user: RoomUser; state: RoomState; sessionToken: string } {
     if (!this.isValidRoomCode(roomCode)) {
-      throw new Error('Room code must be exactly 6 digits.');
+      throw new RoomError('Room codes must be exactly 6 digits.', 'VALIDATION');
     }
-    if (!this.isValidUsername(username)) {
-      throw new Error('Username must contain alphabetic characters only (A-Z, a-z).');
-    }
-
-    const cleanUsername = username.trim();
-    const existingRoom = this.rooms.get(roomCode);
-
-    // If room does not exist, auto-create it with this user as ADMIN
-    if (!existingRoom) {
-      const { user, state } = this.createRoom(roomCode, cleanUsername, socketId, userId);
-      return { user, state, isNewRoom: true, reconnected: false };
+    const cleanName = this.validateUsername(username);
+    if (this.rooms.has(roomCode)) {
+      throw new RoomError('That room code is already active. Try joining it instead.', 'CONFLICT');
     }
 
-    // Room exists: check if this is a reconnection by the same userId
-    const currentUsers = existingRoom.state.users;
-    if (userId) {
-      const existingUser = currentUsers.find(u => u.id === userId);
-      if (existingUser) {
-        // Reconnecting user!
-        existingUser.socketId = socketId;
-        existingUser.isOnline = true;
-        existingUser.lastSeen = Date.now();
-        // Update username if requested and still valid
-        if (cleanUsername.toLowerCase() === existingUser.username.toLowerCase() || 
-            !currentUsers.some(u => u.id !== userId && u.username.toLowerCase() === cleanUsername.toLowerCase())) {
-          existingUser.username = cleanUsername;
-        }
-
-        // Clear disconnect timer if active
-        const timer = existingRoom.disconnectTimers.get(userId);
-        if (timer) {
-          clearTimeout(timer);
-          existingRoom.disconnectTimers.delete(userId);
-        }
-
-        // Cancel room close timer if running
-        if (existingRoom.roomCloseTimer) {
-          clearTimeout(existingRoom.roomCloseTimer);
-          existingRoom.roomCloseTimer = null;
-        }
-
-        return { user: existingUser, state: existingRoom.state, isNewRoom: false, reconnected: true };
-      }
-    }
-
-    // Check case-insensitive username uniqueness among currently active/registered users in this room
-    const isDuplicateUsername = currentUsers.some(
-      u => u.username.toLowerCase() === cleanUsername.toLowerCase() && u.isOnline
-    );
-
-    if (isDuplicateUsername) {
-      throw new Error(`Username "${cleanUsername}" is already taken in room ${roomCode}. Please choose another name.`);
-    }
-
-    // User is joining as regular USER
-    const newUserId = userId || crypto.randomUUID();
-    const newUser: RoomUser = {
-      id: newUserId,
-      socketId,
-      username: cleanUsername,
-      isAdmin: false,
-      isOnline: true,
-      lastSeen: Date.now(),
-      ping: 0,
-      drift: 0
+    const member = this.makeMember(cleanName, socketId, userId, true);
+    const now = Date.now();
+    const state: InternalRoom['state'] = {
+      roomCode,
+      adminId: member.id,
+      createdAt: now,
+      playback: {
+        status: 'stopped',
+        currentTrack: null,
+        position: 0,
+        serverTimestamp: now,
+        scheduledStartTime: null,
+        playbackRate: 1,
+        version: now,
+      },
+      queue: [],
+      currentIndex: 0,
+      users: [member],
+      settings: {
+        repeatMode: 'all',
+        isShuffle: false,
+        sharedVolume: 100,
+      },
+      version: now,
     };
 
-    currentUsers.push(newUser);
+    this.rooms.set(roomCode, {
+      state,
+      disconnectTimers: new Map(),
+      trackEndTimer: null,
+      lastActivity: now,
+    });
 
-    // Cancel room close timer if all users had previously left
-    if (existingRoom.roomCloseTimer) {
-      clearTimeout(existingRoom.roomCloseTimer);
-      existingRoom.roomCloseTimer = null;
-    }
-
-    return { user: newUser, state: existingRoom.state, isNewRoom: false, reconnected: false };
+    const publicState = this.serialize(roomCode);
+    if (publicState) this.hooks.roomUpdated?.(roomCode, publicState);
+    return {
+      user: this.toPublicUser(member),
+      state: publicState!,
+      sessionToken: member.sessionToken,
+    };
   }
 
-  /**
-   * Handles user disconnecting (temporary disconnection grace period).
-   */
-  public handleUserDisconnect(
+  public joinOrCreateRoom(
+    roomCode: string,
+    username: string,
     socketId: string,
-    onPermanentLeave?: (roomCode: string, user: RoomUser, promotedAdmin?: RoomUser) => void
-  ): { roomCode: string; user: RoomUser } | null {
-    for (const [roomCode, internal] of this.rooms.entries()) {
-      const user = internal.state.users.find(u => u.socketId === socketId);
-      if (user) {
-        user.isOnline = false;
-        user.lastSeen = Date.now();
+    userId?: string,
+    sessionToken?: string
+  ): {
+    user: RoomUser;
+    state: RoomState;
+    isNewRoom: boolean;
+    reconnected: boolean;
+    sessionToken: string;
+  } {
+    if (!this.isValidRoomCode(roomCode)) {
+      throw new RoomError('Room codes must be exactly 6 digits.', 'VALIDATION');
+    }
+    const cleanName = this.validateUsername(username);
 
-        // Clear existing timer if any
-        const existingTimer = internal.disconnectTimers.get(user.id);
-        if (existingTimer) {
-          clearTimeout(existingTimer);
+    const room = this.rooms.get(roomCode);
+    if (!room) {
+      const created = this.createRoom(roomCode, cleanName, socketId, userId);
+      return { ...created, isNewRoom: true, reconnected: false };
+    }
+
+    this.touch(roomCode);
+
+    if (userId) {
+      const existing = room.state.users.find((user) => user.id === userId);
+      if (existing) {
+        if (!sessionToken || existing.sessionToken !== sessionToken) {
+          throw new RoomError(
+            'That participant session could not be verified. Rejoin with a new username.',
+            'FORBIDDEN'
+          );
         }
-
-        // Set grace period timer for permanent leave
-        const timer = setTimeout(() => {
-          this.removeUserPermanently(roomCode, user.id, onPermanentLeave);
-        }, this.DISCONNECT_GRACE_PERIOD_MS);
-
-        internal.disconnectTimers.set(user.id, timer);
-
-        return { roomCode, user };
+        this.reattach(roomCode, existing, cleanName, socketId);
+        return {
+          user: this.toPublicUser(existing),
+          state: this.serialize(roomCode)!,
+          isNewRoom: false,
+          reconnected: true,
+          sessionToken: existing.sessionToken,
+        };
       }
+    }
+
+    if (room.state.users.length >= this.options.maxUsersPerRoom) {
+      throw new RoomError('This room is full. Try again in a moment.', 'FULL');
+    }
+
+    const duplicate = room.state.users.find(
+      (user) => user.username.toLowerCase() === cleanName.toLowerCase()
+    );
+    if (duplicate) {
+      throw new RoomError(
+        duplicate.isOnline
+          ? `“${cleanName}” is already in this room. Choose another name.`
+          : `“${cleanName}” is temporarily held by a reconnecting listener. Choose another name or wait a few seconds.`,
+        'CONFLICT'
+      );
+    }
+
+    const member = this.makeMember(cleanName, socketId, userId, false);
+    room.state.users.push(member);
+    room.state.version = Date.now();
+    room.lastActivity = Date.now();
+    this.publishRoom(roomCode);
+
+    return {
+      user: this.toPublicUser(member),
+      state: this.serialize(roomCode)!,
+      isNewRoom: false,
+      reconnected: false,
+      sessionToken: member.sessionToken,
+    };
+  }
+
+  public resumeRoom(
+    roomCode: string,
+    userId: string,
+    sessionToken: string,
+    socketId: string,
+    username?: string
+  ): { user: RoomUser; state: RoomState } {
+    if (!this.isValidRoomCode(roomCode)) {
+      throw new RoomError('Invalid room code.', 'VALIDATION');
+    }
+    const room = this.rooms.get(roomCode);
+    if (!room) {
+      throw new RoomError('That room is no longer active.', 'EXPIRED');
+    }
+
+    const member = room.state.users.find((user) => user.id === userId);
+    if (!member || !sessionToken || member.sessionToken !== sessionToken) {
+      throw new RoomError('Your session is no longer valid in this room.', 'EXPIRED');
+    }
+
+    const cleanName = username ? this.validateUsername(username) : member.username;
+    this.reattach(roomCode, member, cleanName, socketId);
+    return { user: this.toPublicUser(member), state: this.serialize(roomCode)! };
+  }
+
+  private reattach(
+    roomCode: string,
+    member: RoomMember,
+    cleanName: string,
+    socketId: string
+  ): void {
+    const room = this.rooms.get(roomCode);
+    if (!room) throw new RoomError('That room is no longer active.', 'EXPIRED');
+
+    if (cleanName.toLowerCase() !== member.username.toLowerCase()) {
+      const conflict = room.state.users.find(
+        (user) =>
+          user.id !== member.id && user.username.toLowerCase() === cleanName.toLowerCase()
+      );
+      if (conflict) {
+        throw new RoomError(`“${cleanName}” is already taken in this room.`, 'CONFLICT');
+      }
+      member.username = cleanName;
+    }
+
+    const timer = room.disconnectTimers.get(member.id);
+    if (timer) {
+      clearTimeout(timer);
+      room.disconnectTimers.delete(member.id);
+    }
+
+    member.socketId = socketId;
+    member.isOnline = true;
+    room.state.version = Date.now();
+    room.lastActivity = Date.now();
+    this.publishRoom(roomCode);
+  }
+
+  public markDisconnected(
+    socketId: string,
+    onExpire: (roomCode: string, userId: string, promotedAdmin?: RoomUser) => void
+  ): { roomCode: string; userId: string; username: string } | null {
+    for (const [roomCode, room] of this.rooms) {
+      const member = room.state.users.find((user) => user.socketId === socketId);
+      if (!member) continue;
+
+      member.isOnline = false;
+      room.state.version = Date.now();
+      this.publishRoom(roomCode);
+
+      const existingTimer = room.disconnectTimers.get(member.id);
+      if (existingTimer) clearTimeout(existingTimer);
+
+      const timer = setTimeout(() => {
+        const currentRoom = this.rooms.get(roomCode);
+        const currentMember = currentRoom?.state.users.find((user) => user.id === member.id);
+        if (!currentRoom || !currentMember || currentMember.isOnline) {
+          currentRoom?.disconnectTimers.delete(member.id);
+          return;
+        }
+        const result = this.leaveRoom(roomCode, member.id);
+        onExpire(roomCode, member.id, result.promotedAdmin);
+      }, this.options.disconnectGraceMs);
+
+      timer.unref?.();
+      room.disconnectTimers.set(member.id, timer);
+
+      return { roomCode, userId: member.id, username: member.username };
     }
     return null;
   }
 
-  /**
-   * Explicitly leave the room immediately (user clicks Leave Room).
-   */
   public leaveRoom(
     roomCode: string,
-    userId: string,
-    onAdminPromoted?: (newAdmin: RoomUser) => void
-  ): { remainingUsers: RoomUser[]; promotedAdmin?: RoomUser; roomClosed: boolean } {
-    const internal = this.rooms.get(roomCode);
-    if (!internal) {
-      return { remainingUsers: [], roomClosed: true };
-    }
+    userId: string
+  ): {
+    roomClosed: boolean;
+    promotedAdmin?: RoomUser;
+    remainingUsers: RoomUser[];
+  } {
+    const room = this.rooms.get(roomCode);
+    if (!room) return { roomClosed: true, remainingUsers: [] };
 
-    const timer = internal.disconnectTimers.get(userId);
+    const timer = room.disconnectTimers.get(userId);
     if (timer) {
       clearTimeout(timer);
-      internal.disconnectTimers.delete(userId);
+      room.disconnectTimers.delete(userId);
     }
 
-    const userIndex = internal.state.users.findIndex(u => u.id === userId);
-    if (userIndex === -1) {
-      return { remainingUsers: internal.state.users, roomClosed: false };
+    const index = room.state.users.findIndex((user) => user.id === userId);
+    if (index === -1) {
+      return {
+        roomClosed: false,
+        remainingUsers: room.state.users.map((user) => this.toPublicUser(user)),
+      };
     }
 
-    const wasAdmin = internal.state.users[userIndex].isAdmin;
-    internal.state.users.splice(userIndex, 1);
+    const wasAdmin = room.state.users[index].isAdmin;
+    room.state.users.splice(index, 1);
+    room.state.version = Date.now();
+    room.lastActivity = Date.now();
+
+    if (room.state.users.length === 0) {
+      this.closeRoom(roomCode, 'empty');
+      return { roomClosed: true, remainingUsers: [] };
+    }
 
     let promotedAdmin: RoomUser | undefined;
-
-    // If room is now empty, close room
-    if (internal.state.users.length === 0) {
-      this.closeRoom(roomCode);
-      return { remainingUsers: [], roomClosed: true };
-    }
-
-    // If the admin left, promote another participant to admin
     if (wasAdmin) {
-      // Find an online user first, or the first remaining user
-      const candidate = internal.state.users.find(u => u.isOnline) || internal.state.users[0];
-      if (candidate) {
-        candidate.isAdmin = true;
-        internal.state.adminId = candidate.id;
-        promotedAdmin = candidate;
-        if (onAdminPromoted) onAdminPromoted(candidate);
-      }
+      const candidate =
+        room.state.users.find((user) => user.isOnline) || room.state.users[0];
+      room.state.users.forEach((user) => {
+        user.isAdmin = user.id === candidate.id;
+      });
+      room.state.adminId = candidate.id;
+      promotedAdmin = this.toPublicUser(candidate);
+      this.hooks.adminChanged?.(roomCode, promotedAdmin);
     }
 
+    this.publishRoom(roomCode);
     return {
-      remainingUsers: internal.state.users,
+      roomClosed: false,
       promotedAdmin,
-      roomClosed: false
+      remainingUsers: room.state.users.map((user) => this.toPublicUser(user)),
     };
   }
 
-  /**
-   * Permanently removes a user after the grace period expires.
-   */
-  private removeUserPermanently(
+  public endRoom(roomCode: string, requesterUserId: string): void {
+    const room = this.rooms.get(roomCode);
+    if (!room) throw new RoomError('That room is no longer active.', 'NOT_FOUND');
+    if (!this.isAdmin(roomCode, requesterUserId)) {
+      throw new RoomError('Only the room admin can end the room.', 'FORBIDDEN');
+    }
+    this.closeRoom(roomCode, 'ended');
+  }
+
+  public closeRoom(roomCode: string, reason: 'empty' | 'ended' | 'expired'): void {
+    const room = this.rooms.get(roomCode);
+    if (!room) return;
+
+    for (const timer of room.disconnectTimers.values()) clearTimeout(timer);
+    room.disconnectTimers.clear();
+    if (room.trackEndTimer) clearTimeout(room.trackEndTimer);
+    this.rooms.delete(roomCode);
+    this.hooks.roomClosed?.(roomCode, reason);
+  }
+
+  public purgeIdleRooms(idleTimeoutMs: number): void {
+    const now = Date.now();
+    for (const [code, room] of this.rooms) {
+      const hasOnline = room.state.users.some((user) => user.isOnline);
+      if (!hasOnline) continue;
+      if (now - room.lastActivity > idleTimeoutMs) this.closeRoom(code, 'expired');
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Queries
+  // ---------------------------------------------------------------------------
+
+  public getState(roomCode: string): RoomState | null {
+    return this.serialize(roomCode);
+  }
+
+  public getRoomCodes(): string[] {
+    return [...this.rooms.keys()];
+  }
+
+  public getPlayback(roomCode: string): PlaybackState | null {
+    return this.rooms.get(roomCode)?.state.playback ?? null;
+  }
+
+  public getQueue(roomCode: string): { queue: MediaItem[]; currentIndex: number } | null {
+    const room = this.rooms.get(roomCode);
+    if (!room) return null;
+    return { queue: this.cloneQueue(room.state.queue), currentIndex: room.state.currentIndex };
+  }
+
+  public isMember(roomCode: string, userId: string): boolean {
+    return Boolean(this.rooms.get(roomCode)?.state.users.some((user) => user.id === userId));
+  }
+
+  public isAdmin(roomCode: string, userId: string): boolean {
+    const room = this.rooms.get(roomCode);
+    if (!room) return false;
+    return room.state.adminId === userId &&
+      Boolean(room.state.users.find((user) => user.id === userId)?.isAdmin);
+  }
+
+  public updateUserMetrics(
     roomCode: string,
     userId: string,
-    callback?: (roomCode: string, user: RoomUser, promotedAdmin?: RoomUser) => void
-  ): void {
-    const internal = this.rooms.get(roomCode);
-    if (!internal) return;
-
-    internal.disconnectTimers.delete(userId);
-    const user = internal.state.users.find(u => u.id === userId);
-    if (!user || user.isOnline) return; // User came back online!
-
-    const res = this.leaveRoom(roomCode, userId);
-    if (callback && user) {
-      callback(roomCode, user, res.promotedAdmin);
-    }
-  }
-
-  /**
-   * Admin ends the room permanently.
-   */
-  public endRoom(roomCode: string, requesterUserId: string): boolean {
-    const internal = this.rooms.get(roomCode);
-    if (!internal) return false;
-
-    // Check if requester is admin
-    const requester = internal.state.users.find(u => u.id === requesterUserId);
-    if (!requester || !requester.isAdmin) {
-      throw new Error('Only the room ADMIN can end the room.');
-    }
-
-    this.closeRoom(roomCode);
-    return true;
-  }
-
-  /**
-   * Closes a room and releases its code.
-   */
-  public closeRoom(roomCode: string): void {
-    const internal = this.rooms.get(roomCode);
-    if (!internal) return;
-
-    // Clear all pending disconnect timers
-    for (const timer of internal.disconnectTimers.values()) {
-      clearTimeout(timer);
-    }
-    internal.disconnectTimers.clear();
-
-    if (internal.roomCloseTimer) {
-      clearTimeout(internal.roomCloseTimer);
-    }
-
-    this.rooms.delete(roomCode);
-  }
-
-  /**
-   * Check whether a user is admin in the given room.
-   */
-  public isUserAdmin(roomCode: string, userIdOrSocketId: string): boolean {
-    const internal = this.rooms.get(roomCode);
-    if (!internal) return false;
-    const user = internal.state.users.find(
-      u => u.id === userIdOrSocketId || u.socketId === userIdOrSocketId
-    );
-    return !!(user && user.isAdmin);
-  }
-
-  /**
-   * Updates playback state for room (Admin only check should happen before).
-   */
-  public updatePlayback(roomCode: string, playback: PlaybackState): PlaybackState {
-    const internal = this.rooms.get(roomCode);
-    if (!internal) throw new Error('Room not found');
-
-    internal.state.playback = playback;
-    return internal.state.playback;
-  }
-
-  /**
-   * Updates queue for room (Admin only).
-   */
-  public updateQueue(
-    roomCode: string,
-    queue: UnifiedMediaItem[],
-    currentIndex?: number
-  ): { queue: UnifiedMediaItem[]; currentIndex: number } {
-    const internal = this.rooms.get(roomCode);
-    if (!internal) throw new Error('Room not found');
-
-    internal.state.queue = queue;
-    if (currentIndex !== undefined) {
-      internal.state.currentIndex = currentIndex;
-    }
-    return {
-      queue: internal.state.queue,
-      currentIndex: internal.state.currentIndex
-    };
-  }
-
-  /**
-   * Updates room settings (repeat, shuffle, volume).
-   */
-  public updateSettings(roomCode: string, settings: Partial<RoomSettings>): RoomSettings {
-    const internal = this.rooms.get(roomCode);
-    if (!internal) throw new Error('Room not found');
-
-    internal.state.settings = {
-      ...internal.state.settings,
-      ...settings
-    };
-    return internal.state.settings;
-  }
-
-  /**
-   * Updates client metrics (drift, ping).
-   */
-  public updateClientMetrics(
-    roomCode: string,
-    socketId: string,
     drift: number,
     ping: number
   ): void {
-    const internal = this.rooms.get(roomCode);
-    if (!internal) return;
-    const user = internal.state.users.find(u => u.socketId === socketId);
-    if (user) {
-      user.drift = drift;
-      user.ping = ping;
-      user.lastSeen = Date.now();
+    const room = this.rooms.get(roomCode);
+    const member = room?.state.users.find((user) => user.id === userId);
+    if (!member) return;
+    member.drift = Math.max(0, Math.min(5_000, Math.round(drift)));
+    member.ping = Math.max(0, Math.min(5_000, Math.round(ping)));
+    room!.lastActivity = Date.now();
+    // Presence metrics are intentionally not broadcast on every heartbeat; the
+    // next room snapshot includes them, which avoids needless websocket churn.
+  }
+
+  public authoritativePosition(roomCode: string): number {
+    const room = this.rooms.get(roomCode);
+    if (!room) return 0;
+    return this.sync.positionAt(room.state.playback);
+  }
+
+  public heartbeatSnapshot(roomCode: string): PlaybackState | null {
+    const playback = this.rooms.get(roomCode)?.state.playback;
+    if (!playback) return null;
+    return this.sync.snapshot(playback);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Playback
+  // ---------------------------------------------------------------------------
+
+  public play(roomCode: string, userId: string): PlaybackState {
+    const room = this.requireAdminRoom(roomCode, userId);
+    const track = room.state.playback.currentTrack;
+    if (!track) throw new RoomError('Add something to the queue first.', 'VALIDATION');
+
+    const current = this.sync.positionAt(room.state.playback);
+    const duration = track.duration;
+    const position = duration > 0 && current >= duration - 0.2 ? 0 : current;
+
+    const playback = this.sync.createState(
+      'playing',
+      position,
+      track,
+      room.state.playback.playbackRate || 1
+    );
+    this.setPlayback(roomCode, playback);
+    return playback;
+  }
+
+  public pause(roomCode: string, userId: string): PlaybackState {
+    const room = this.requireAdminRoom(roomCode, userId);
+    const track = room.state.playback.currentTrack;
+    if (!track) throw new RoomError('Nothing is playing.', 'VALIDATION');
+
+    const position = this.sync.positionAt(room.state.playback);
+    const playback = this.sync.createState('paused', position, track, 1);
+    this.setPlayback(roomCode, playback);
+    return playback;
+  }
+
+  public seek(roomCode: string, userId: string, rawPosition: number): PlaybackState {
+    const room = this.requireAdminRoom(roomCode, userId);
+    const track = room.state.playback.currentTrack;
+    if (!track) throw new RoomError('Nothing is playing.', 'VALIDATION');
+
+    const duration = track.duration;
+    let position = Number.isFinite(rawPosition) ? Math.max(0, rawPosition) : 0;
+    if (duration > 0) position = Math.min(duration, position);
+
+    const isPlaying = room.state.playback.status === 'playing';
+    const playback = this.sync.createState(
+      isPlaying ? 'playing' : 'paused',
+      position,
+      track,
+      1,
+      Math.min(350, this.syncDelay())
+    );
+    this.setPlayback(roomCode, playback);
+    return playback;
+  }
+
+  public next(roomCode: string, userId: string): PlaybackState {
+    const room = this.requireAdminRoom(roomCode, userId);
+    return this.advance(roomCode, 1, false);
+  }
+
+  public previous(roomCode: string, userId: string): PlaybackState {
+    const room = this.requireAdminRoom(roomCode, userId);
+    const track = room.state.playback.currentTrack;
+    const position = this.sync.positionAt(room.state.playback);
+
+    if (track && position > 3) {
+      const restarted = this.sync.createState('playing', 0, track, 1);
+      this.setPlayback(roomCode, restarted);
+      return restarted;
+    }
+
+    return this.advance(roomCode, -1, false);
+  }
+
+  public completeTrack(roomCode: string, trackId: string, requesterUserId?: string): void {
+    const room = this.rooms.get(roomCode);
+    if (!room) return;
+    if (requesterUserId && !this.isMember(roomCode, requesterUserId)) return;
+    if (!room.state.playback.currentTrack || room.state.playback.currentTrack.id !== trackId) {
+      return;
+    }
+    if (room.state.playback.status !== 'playing') return;
+
+    // Ignore premature "ended" reports from a client that has not reached the
+    // end of the media. This prevents a malicious or broken client from skipping.
+    const position = this.sync.positionAt(room.state.playback);
+    const duration = room.state.playback.currentTrack.duration;
+    if (duration > 0 && position < duration - 6) return;
+
+    this.advance(roomCode, 1, true);
+  }
+
+  private advance(roomCode: string, direction: 1 | -1, automatic: boolean): PlaybackState {
+    const room = this.rooms.get(roomCode);
+    if (!room) throw new RoomError('Room not found.', 'NOT_FOUND');
+
+    const { queue, settings } = room.state;
+    if (queue.length === 0) {
+      const stopped = this.sync.createState('stopped', 0, null);
+      this.setPlayback(roomCode, stopped);
+      return stopped;
+    }
+
+    if (automatic && settings.repeatMode === 'one' && direction === 1) {
+      const track = room.state.playback.currentTrack;
+      const looped = this.sync.createState('playing', 0, track, 1, 250);
+      this.setPlayback(roomCode, looped);
+      return looped;
+    }
+
+    let nextIndex: number;
+    if (settings.isShuffle && queue.length > 1) {
+      const indexes = queue
+        .map((_, index) => index)
+        .filter((index) => index !== room.state.currentIndex);
+      nextIndex = indexes[Math.floor(Math.random() * indexes.length)] ?? 0;
+    } else {
+      nextIndex = room.state.currentIndex + direction;
+      if (nextIndex >= queue.length) {
+        if (settings.repeatMode === 'all') nextIndex = 0;
+        else {
+          const last = room.state.playback.currentTrack;
+          const stopped = this.sync.createState('paused', last?.duration || 0, last, 1);
+          this.setPlayback(roomCode, stopped);
+          return stopped;
+        }
+      }
+      if (nextIndex < 0) {
+        nextIndex = settings.repeatMode === 'all' ? queue.length - 1 : 0;
+      }
+    }
+
+    room.state.currentIndex = nextIndex;
+    const nextTrack = queue[nextIndex];
+    const playback = this.sync.createState('playing', 0, nextTrack, 1);
+    this.setPlayback(roomCode, playback);
+    this.hooks.queueUpdated?.(roomCode, this.cloneQueue(queue), nextIndex);
+    return playback;
+  }
+
+  public playIndex(roomCode: string, userId: string, index: number): PlaybackState {
+    const room = this.requireAdminRoom(roomCode, userId);
+    if (!Number.isInteger(index) || index < 0 || index >= room.state.queue.length) {
+      throw new RoomError('That queue item does not exist.', 'VALIDATION');
+    }
+
+    room.state.currentIndex = index;
+    const track = room.state.queue[index];
+    const playback = this.sync.createState('playing', 0, track, 1);
+    this.setPlayback(roomCode, playback);
+    this.hooks.queueUpdated?.(roomCode, this.cloneQueue(room.state.queue), index);
+    return playback;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Queue
+  // ---------------------------------------------------------------------------
+
+  public addMedia(
+    roomCode: string,
+    userId: string,
+    inputs: MediaItemInput[]
+  ): { added: MediaItem[]; playback?: PlaybackState } {
+    const room = this.requireAdminRoom(roomCode, userId);
+    if (!Array.isArray(inputs) || inputs.length === 0) {
+      throw new RoomError('No media was provided.', 'VALIDATION');
+    }
+    if (room.state.queue.length + inputs.length > this.options.maxQueueLength) {
+      throw new RoomError(
+        `This room's queue is limited to ${this.options.maxQueueLength} items.`,
+        'VALIDATION'
+      );
+    }
+
+    const member = room.state.users.find((user) => user.id === userId)!;
+    const added = inputs.map((input) => this.sanitizeMediaInput(input, member.username));
+    room.state.queue.push(...added);
+
+    let playback: PlaybackState | undefined;
+    if (!room.state.playback.currentTrack && room.state.queue.length > 0) {
+      room.state.currentIndex = 0;
+      playback = this.sync.createState('playing', 0, room.state.queue[0], 1);
+      this.setPlayback(roomCode, playback, false);
+    } else if (room.state.currentIndex >= room.state.queue.length) {
+      room.state.currentIndex = Math.max(0, room.state.queue.length - 1);
+    }
+
+    room.state.version = Date.now();
+    room.lastActivity = Date.now();
+    this.hooks.queueUpdated?.(
+      roomCode,
+      this.cloneQueue(room.state.queue),
+      room.state.currentIndex
+    );
+    this.publishRoom(roomCode);
+
+    return { added: this.cloneQueue(added), playback };
+  }
+
+  public removeMedia(roomCode: string, userId: string, itemId: string): PlaybackState | null {
+    const room = this.requireAdminRoom(roomCode, userId);
+    const currentTrackId = room.state.playback.currentTrack?.id;
+    const result = UnifiedMediaQueue.remove(room.state.queue, room.state.currentIndex, itemId);
+    if (result.queue === room.state.queue) return null;
+
+    room.state.queue = result.queue;
+    room.state.currentIndex = result.currentIndex;
+    room.state.version = Date.now();
+
+    let playback: PlaybackState | null = null;
+    if (result.removedCurrent) {
+      const nextTrack = room.state.queue[room.state.currentIndex] || null;
+      if (nextTrack) {
+        playback = this.sync.createState(
+          room.state.playback.status === 'playing' ? 'playing' : 'paused',
+          0,
+          nextTrack,
+          1
+        );
+      } else {
+        playback = this.sync.createState('stopped', 0, null);
+      }
+      this.setPlayback(roomCode, playback, false);
+    } else if (currentTrackId) {
+      const current = room.state.queue.find((item) => item.id === currentTrackId);
+      if (current) room.state.playback.currentTrack = current;
+    }
+
+    this.hooks.queueUpdated?.(
+      roomCode,
+      this.cloneQueue(room.state.queue),
+      room.state.currentIndex
+    );
+    this.publishRoom(roomCode);
+    return playback;
+  }
+
+  public reorderQueue(
+    roomCode: string,
+    userId: string,
+    fromIndex: number,
+    toIndex: number
+  ): void {
+    const room = this.requireAdminRoom(roomCode, userId);
+    if (!Number.isInteger(fromIndex) || !Number.isInteger(toIndex)) {
+      throw new RoomError('Invalid queue position.', 'VALIDATION');
+    }
+
+    const result = UnifiedMediaQueue.reorder(
+      room.state.queue,
+      room.state.currentIndex,
+      fromIndex,
+      toIndex
+    );
+    if (result.queue === room.state.queue) return;
+
+    room.state.queue = result.queue;
+    room.state.currentIndex = result.currentIndex;
+    room.state.version = Date.now();
+    room.state.playback.currentTrack =
+      room.state.queue[room.state.currentIndex] || room.state.playback.currentTrack;
+
+    this.hooks.queueUpdated?.(
+      roomCode,
+      this.cloneQueue(room.state.queue),
+      room.state.currentIndex
+    );
+    this.publishRoom(roomCode);
+  }
+
+  public clearQueue(roomCode: string, userId: string): PlaybackState {
+    const room = this.requireAdminRoom(roomCode, userId);
+    room.state.queue = [];
+    room.state.currentIndex = 0;
+    room.state.version = Date.now();
+
+    const playback = this.sync.createState('stopped', 0, null);
+    this.setPlayback(roomCode, playback, false);
+    this.hooks.queueUpdated?.(roomCode, [], 0);
+    this.publishRoom(roomCode);
+    return playback;
+  }
+
+  public updateSettings(
+    roomCode: string,
+    userId: string,
+    settings: Partial<RoomSettings>
+  ): RoomSettings {
+    const room = this.requireAdminRoom(roomCode, userId);
+    const next = { ...room.state.settings };
+
+    if (settings.repeatMode && ['off', 'all', 'one'].includes(settings.repeatMode)) {
+      next.repeatMode = settings.repeatMode;
+    }
+    if (typeof settings.isShuffle === 'boolean') {
+      next.isShuffle = settings.isShuffle;
+    }
+    if (typeof settings.sharedVolume === 'number' && Number.isFinite(settings.sharedVolume)) {
+      next.sharedVolume = Math.max(0, Math.min(100, Math.round(settings.sharedVolume)));
+    }
+
+    room.state.settings = next;
+    room.state.version = Date.now();
+    this.publishRoom(roomCode);
+    return { ...next };
+  }
+
+  public updateTrackDuration(
+    roomCode: string,
+    itemId: string,
+    duration: number,
+    requesterUserId: string
+  ): void {
+    if (!this.isMember(roomCode, requesterUserId)) return;
+    if (!Number.isFinite(duration) || duration <= 0 || duration > 86_400) return;
+
+    const room = this.rooms.get(roomCode);
+    if (!room) return;
+
+    const rounded = Math.round(duration);
+    const item = room.state.queue.find((entry) => entry.id === itemId);
+    if (!item || item.duration === rounded) return;
+
+    item.duration = rounded;
+    if (room.state.playback.currentTrack?.id === itemId) {
+      room.state.playback.currentTrack = item;
+      this.scheduleTrackEnd(roomCode);
+    }
+    room.state.version = Date.now();
+    this.publishRoom(roomCode);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Internals
+  // ---------------------------------------------------------------------------
+
+  private syncDelay(): number {
+    // The sync engine owns its delay; this mirrors it for tiny local seeks.
+    return 350;
+  }
+
+  private requireAdminRoom(roomCode: string, userId: string): InternalRoom {
+    const room = this.rooms.get(roomCode);
+    if (!room) throw new RoomError('That room is no longer active.', 'NOT_FOUND');
+    if (!this.isAdmin(roomCode, userId)) {
+      throw new RoomError('Only the room admin can control playback or the queue.', 'FORBIDDEN');
+    }
+    this.touch(roomCode);
+    return room;
+  }
+
+  private makeMember(
+    username: string,
+    socketId: string,
+    userId: string | undefined,
+    isAdmin: boolean
+  ): RoomMember {
+    return {
+      id: userId || crypto.randomUUID(),
+      socketId,
+      username,
+      isAdmin,
+      isOnline: true,
+      ping: 0,
+      drift: 0,
+      connectedAt: Date.now(),
+      sessionToken: crypto.randomBytes(24).toString('hex'),
+    };
+  }
+
+  private sanitizeMediaInput(input: MediaItemInput, addedBy: string): MediaItem {
+    const providers: MediaProvider[] = ['youtube', 'spotify', 'audio'];
+    if (!input || !providers.includes(input.provider)) {
+      throw new RoomError('Unsupported media provider.', 'VALIDATION');
+    }
+    if (typeof input.url !== 'string' || input.url.length > 2_000) {
+      throw new RoomError('Invalid media URL.', 'VALIDATION');
+    }
+
+    return {
+      id: `q_${crypto.randomUUID()}`,
+      provider: input.provider,
+      sourceType: input.sourceType || 'url',
+      mediaId: String(input.mediaId || '').slice(0, 200),
+      url: input.url,
+      title: String(input.title || 'Untitled').slice(0, 300),
+      artist: String(input.artist || 'Unknown').slice(0, 200),
+      album: input.album ? String(input.album).slice(0, 300) : undefined,
+      thumbnail: String(input.thumbnail || '').slice(0, 2_000),
+      duration:
+        Number.isFinite(input.duration) && input.duration > 0
+          ? Math.min(Math.round(input.duration), 86_400)
+          : 0,
+      isPlayable: input.isPlayable !== false,
+      unavailabilityReason: input.unavailabilityReason
+        ? String(input.unavailabilityReason).slice(0, 500)
+        : undefined,
+      addedBy,
+      addedAt: Date.now(),
+    };
+  }
+
+  private setPlayback(
+    roomCode: string,
+    playback: PlaybackState,
+    publish = true
+  ): void {
+    const room = this.rooms.get(roomCode);
+    if (!room) return;
+
+    room.state.playback = playback;
+    room.state.version = Date.now();
+    room.lastActivity = Date.now();
+    this.scheduleTrackEnd(roomCode);
+
+    if (publish) {
+      this.hooks.playbackSync?.(roomCode, playback);
+      this.publishRoom(roomCode);
     }
   }
-}
 
+  private scheduleTrackEnd(roomCode: string): void {
+    const room = this.rooms.get(roomCode);
+    if (!room) return;
+    if (room.trackEndTimer) {
+      clearTimeout(room.trackEndTimer);
+      room.trackEndTimer = null;
+    }
+
+    const playback = room.state.playback;
+    if (playback.status !== 'playing' || !playback.currentTrack) return;
+    if (playback.currentTrack.duration <= 0) return;
+
+    const now = Date.now();
+    const startDelay =
+      playback.scheduledStartTime && playback.scheduledStartTime > now
+        ? playback.scheduledStartTime - now
+        : 0;
+    const position = this.sync.positionAt(playback, now);
+    const remaining = Math.max(0, playback.currentTrack.duration - position) * 1000;
+    const delay = Math.max(100, remaining + startDelay + 80);
+
+    const timer = setTimeout(() => {
+      const current = this.rooms.get(roomCode);
+      if (!current || current.state.playback.status !== 'playing') return;
+      this.advance(roomCode, 1, true);
+    }, delay);
+    timer.unref?.();
+    room.trackEndTimer = timer;
+  }
+
+  private touch(roomCode: string): void {
+    const room = this.rooms.get(roomCode);
+    if (room) room.lastActivity = Date.now();
+  }
+
+  private publishRoom(roomCode: string): void {
+    const state = this.serialize(roomCode);
+    if (state) this.hooks.roomUpdated?.(roomCode, state);
+  }
+
+  private toPublicUser(member: RoomMember): RoomUser {
+    return {
+      id: member.id,
+      username: member.username,
+      isAdmin: member.isAdmin,
+      isOnline: member.isOnline,
+      ping: member.ping,
+      drift: member.drift,
+    };
+  }
+
+  private cloneQueue(queue: MediaItem[]): MediaItem[] {
+    return queue.map((item) => ({ ...item }));
+  }
+
+  private serialize(roomCode: string): RoomState | null {
+    const room = this.rooms.get(roomCode);
+    if (!room) return null;
+
+    return {
+      roomCode: room.state.roomCode,
+      adminId: room.state.adminId,
+      createdAt: room.state.createdAt,
+      playback: {
+        ...room.state.playback,
+        currentTrack: room.state.playback.currentTrack
+          ? { ...room.state.playback.currentTrack }
+          : null,
+      },
+      queue: this.cloneQueue(room.state.queue),
+      currentIndex: room.state.currentIndex,
+      users: room.state.users.map((member) => this.toPublicUser(member)),
+      settings: { ...room.state.settings },
+      version: room.state.version,
+    };
+  }
+}

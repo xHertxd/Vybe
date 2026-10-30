@@ -1,44 +1,33 @@
-import { io, Socket } from 'socket.io-client';
+import { io, type Socket } from 'socket.io-client';
 
-// Configurable backend URL: supports VITE_SERVER_URL environment variable for Vercel/Netlify deployments,
-// falls back to localhost:5000 in local development, or same-origin for unified servers.
+const envUrl = (import.meta.env.VITE_SERVER_URL as string | undefined)?.trim();
+
+/**
+ * In local development Vite proxies /api, /uploads and /socket.io to the Node
+ * server. In production, point VITE_SERVER_URL at the deployed backend, or
+ * leave it blank when the backend serves the built client (single process).
+ */
 export const SERVER_URL =
-  import.meta.env.VITE_SERVER_URL ||
-  (window.location.port === '3000' ? 'http://localhost:5000' : window.location.origin);
+  envUrl ||
+  (typeof window !== 'undefined' && window.location.port === '3000'
+    ? 'http://localhost:5000'
+    : typeof window !== 'undefined'
+      ? window.location.origin
+      : 'http://localhost:5000');
 
 export function getApiUrl(path: string): string {
-  const cleanBase = SERVER_URL.replace(/\/+$/, '');
-  const cleanPath = path.startsWith('/') ? path : `/${path}`;
-  return `${cleanBase}${cleanPath}`;
+  const base = SERVER_URL.replace(/\/+$/, '');
+  const clean = path.startsWith('/') ? path : `/${path}`;
+  return `${base}${clean}`;
 }
 
 export const socket: Socket = io(SERVER_URL, {
   autoConnect: true,
   reconnection: true,
   reconnectionAttempts: Infinity,
-  reconnectionDelay: 1000,
-  reconnectionDelayMax: 5000,
-  timeout: 10000,
-  transports: ['websocket', 'polling']
+  reconnectionDelay: 800,
+  reconnectionDelayMax: 6_000,
+  randomizationFactor: 0.4,
+  timeout: 12_000,
+  transports: ['websocket', 'polling'],
 });
-
-// User session storage helpers
-const STORAGE_USER_ID_KEY = 'vybe_user_id';
-const STORAGE_USERNAME_KEY = 'vybe_username';
-
-export function getStoredUserId(): string {
-  let id = localStorage.getItem(STORAGE_USER_ID_KEY);
-  if (!id) {
-    id = 'user_' + Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
-    localStorage.setItem(STORAGE_USER_ID_KEY, id);
-  }
-  return id;
-}
-
-export function getStoredUsername(): string {
-  return localStorage.getItem(STORAGE_USERNAME_KEY) || '';
-}
-
-export function setStoredUsername(username: string): void {
-  localStorage.setItem(STORAGE_USERNAME_KEY, username);
-}

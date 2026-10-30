@@ -1,39 +1,51 @@
-export type MediaProvider = 'youtube' | 'spotify' | 'direct' | 'upload';
+export type MediaProvider = 'youtube' | 'spotify' | 'audio';
 
-export interface UnifiedMediaItem {
-  id: string;
+export type MediaSourceType =
+  | 'video'
+  | 'shorts'
+  | 'playlist'
+  | 'track'
+  | 'album'
+  | 'upload'
+  | 'url';
+
+export interface MediaItemInput {
   provider: MediaProvider;
+  sourceType?: MediaSourceType;
   mediaId: string;
   url: string;
   title: string;
   artist: string;
   thumbnail: string;
-  duration: number; // in seconds
+  duration: number;
+  album?: string;
   isPlayable: boolean;
   unavailabilityReason?: string;
+}
+
+export interface MediaItem extends MediaItemInput {
+  id: string;
   addedBy: string;
   addedAt: number;
-  album?: string;
 }
 
 export type PlaybackStatus = 'playing' | 'paused' | 'stopped';
 
 export interface PlaybackState {
   status: PlaybackStatus;
-  currentTrack: UnifiedMediaItem | null;
-  position: number; // seconds at serverTimestamp
-  serverTimestamp: number; // ms high-res epoch
-  scheduledStartTime: number | null; // ms future epoch when clients start together
+  currentTrack: MediaItem | null;
+  position: number;
+  serverTimestamp: number;
+  scheduledStartTime: number | null;
   playbackRate: number;
+  version: number;
 }
 
 export interface RoomUser {
   id: string;
-  socketId: string;
   username: string;
   isAdmin: boolean;
   isOnline: boolean;
-  lastSeen: number;
   ping: number;
   drift: number;
 }
@@ -49,17 +61,47 @@ export interface RoomState {
   adminId: string;
   createdAt: number;
   playback: PlaybackState;
-  queue: UnifiedMediaItem[];
+  queue: MediaItem[];
   currentIndex: number;
   users: RoomUser[];
   settings: RoomSettings;
+  version: number;
+}
+
+export interface ResolvedMedia {
+  provider: MediaProvider;
+  sourceType: MediaSourceType;
+  title: string;
+  artist: string;
+  thumbnail: string;
+  items: MediaItemInput[];
+  warning?: string;
 }
 
 export interface SyncMetrics {
-  ping: number; // ms round-trip / 2
-  clockOffset: number; // ms difference between client and server clock
-  drift: number; // ms difference between client playback and authoritative server position
+  ping: number;
+  clockOffset: number;
+  drift: number;
   inSync: boolean;
-  correctionMode: 'none' | 'speed-nudge' | 'hard-seek' | 'buffering';
+  correctionMode: 'none' | 'nudge' | 'seek' | 'buffering';
 }
 
+export interface StoredSession {
+  roomCode: string;
+  userId: string;
+  sessionToken: string;
+  username: string;
+}
+
+export interface MediaCapabilities {
+  youtubePlaylists: boolean;
+  spotifyMetadata: boolean;
+  youtubeApi: boolean;
+}
+
+export interface ToastMessage {
+  id: number;
+  title: string;
+  description?: string;
+  tone: 'info' | 'success' | 'error';
+}

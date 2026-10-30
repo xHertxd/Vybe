@@ -1,77 +1,178 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Loader2, WifiOff } from 'lucide-react';
+import { useRoomSession } from './hooks/useRoomSession.js';
 import { RoomEntryPage } from './pages/RoomEntryPage.js';
 import { MusicRoomPage } from './pages/MusicRoomPage.js';
-import type { RoomState, RoomUser } from './types.js';
-import { socket, getStoredUserId, getStoredUsername } from './services/socket.js';
+import { Toasts } from './components/Toasts.js';
+import { Brand } from './components/Brand.js';
+import { AuroraBackground } from './components/AuroraBackground.js';
+import { spotify } from './services/spotify.js';
+import type { ToastMessage } from './types.js';
+
+type Tone = 'info' | 'success' | 'error';
+
+function parseRoomPath(): string | null {
+  const match = window.location.pathname.match(/^\/room\/(\d{6})\/?$/);
+  return match ? match[1] : null;
+}
 
 export function App() {
-  const [currentView, setCurrentView] = useState<'entry' | 'room'>('entry');
-  const [activeRoomState, setActiveRoomState] = useState<RoomState | null>(null);
-  const [currentUser, setCurrentUser] = useState<RoomUser | null>(null);
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const toastId = useRef(0);
+  const [routeCode, setRouteCode] = useState<string | null>(() => parseRoomPath());
+  const [bootChecked, setBootChecked] = useState(false);
 
-  // Attempt automatic session restoration on browser refresh
-  useEffect(() => {
-    const savedRoomCode = sessionStorage.getItem('vybe_active_room_code');
-    const storedUsername = getStoredUsername();
-    const storedUserId = getStoredUserId();
-
-    if (savedRoomCode && storedUsername) {
-      // Re-join session
-      socket.emit('room:join', {
-        roomCode: savedRoomCode,
-        username: storedUsername,
-        userId: storedUserId
-      });
-    }
-
-    const handleRoomJoined = (data: { roomCode: string; user: RoomUser; state: RoomState }) => {
-      sessionStorage.setItem('vybe_active_room_code', data.roomCode);
-      setActiveRoomState(data.state);
-      setCurrentUser(data.user);
-      setCurrentView('room');
-    };
-
-    const handleRoomCreated = (data: { roomCode: string; user: RoomUser; state: RoomState }) => {
-      sessionStorage.setItem('vybe_active_room_code', data.roomCode);
-      setActiveRoomState(data.state);
-      setCurrentUser(data.user);
-      setCurrentView('room');
-    };
-
-    socket.on('room:joined', handleRoomJoined);
-    socket.on('room:created', handleRoomCreated);
-
-    return () => {
-      socket.off('room:joined', handleRoomJoined);
-      socket.off('room:created', handleRoomCreated);
-    };
+  const dismissToast = useCallback((id: number) => {
+    setToasts((current) => current.filter((toast) => toast.id !== id));
   }, []);
 
-  const handleJoinSuccess = (roomCode: string, user: RoomUser, state: RoomState) => {
-    sessionStorage.setItem('vybe_active_room_code', roomCode);
-    setActiveRoomState(state);
-    setCurrentUser(user);
-    setCurrentView('room');
-  };
+  const notify = useCallback((title: string, description?: string, tone: Tone = 'info') => {
+    const id = (toastId.current += 1);
+    setToasts((current) => [...current.slice(-3), { id, title, description, tone }]);
+    window.setTimeout(() => {
+      setToasts((current) => current.filter((toast) => toast.id !== id));
+    }, 5_500);
+  }, []);
 
-  const handleExitRoom = () => {
-    sessionStorage.removeItem('vybe_active_room_code');
-    setActiveRoomState(null);
-    setCurrentUser(null);
-    setCurrentView('entry');
-  };
+  const onEntered = useCallback(
+    (roomCode: string) => {
+      const target = `/room/${roomCode}`;
+      if (window.location.pathname !== target) {
+        window.history.replaceState({}, '', target);
+      }
+      setRouteCode(roomCode);
+    },
+    []
+  );
+
+  const onLeft = useCallback(() => {
+    if (window.location.pathname.startsWith('/room/')) {
+      window.history.replaceState({}, '', '/');
+    }
+    setRouteCode(null);
+  }, []);
+
+  const {
+    phase,
+    room,
+    currentUser,
+    session,
+    connectionIssue,
+    connected,
+    createRoom,
+    joinRoom,
+    leaveRoom,
+    endRoom,
+    savedUsername,
+  } = useRoomSession({ notify, onEntered, onLeft });
+
+  // Finish Spotify PKCE before restoring a deep link, then honour the URL.
+  useEffect(() => {
+    let cancelled = false;
+
+    const boot = async () => {
+      const linked = await spotify.completeAuthFromUrl();
+      if (cancelled) return;
+      if (linked) {
+        notify(
+          'Spotify connected',
+          'Your Premium account is linked. Spotify tracks will play on this device.',
+          'success'
+        );
+      }
+      setRouteCode(parseRoomPath());
+      setBootChecked(true);
+    };
+
+    void boot();
+    return () => {
+      cancelled = true;
+    };
+  }, [notify]);
+
+  useEffect(() => {
+    const onPopState = () => {
+      // While actively in a room, keep the room URL authoritative.
+      if (!room) setRouteCode(parseRoomPath());
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, [room]);
+
+  const showBoot =
+    !room &&
+    (session !== null ||
+      phase === 'reconnecting' ||
+      (phase === 'connecting' && !bootChecked));
 
   return (
-    <div className="w-full min-h-screen bg-[#090a10]">
-      {currentView === 'entry' || !activeRoomState || !currentUser ? (
-        <RoomEntryPage onJoinSuccess={handleJoinSuccess} />
-      ) : (
+    <>
+      {room && currentUser ? (
         <MusicRoomPage
-          initialState={activeRoomState}
+          room={room}
           currentUser={currentUser}
-          onExit={handleExitRoom}
+          phase={phase}
+          connected={connected}
+          onLeave={leaveRoom}
+          onEndRoom={endRoom}
+          notify={notify}
+        />
+      ) : showBoot ? (
+        <BootScreen phase={phase} connectionIssue={connectionIssue} />
+      ) : (
+        <RoomEntryPage
+          onCreate={createRoom}
+          onJoin={joinRoom}
+          phase={phase}
+          connected={connected}
+          initialUsername={savedUsername}
+          initialCode={routeCode ?? undefined}
         />
       )}
+
+      <Toasts toasts={toasts} onDismiss={dismissToast} />
+    </>
+  );
+}
+
+function BootScreen({ phase, connectionIssue }: { phase: string; connectionIssue: boolean }) {
+  const message = connectionIssue
+    ? 'Waiting for the live server…'
+    : phase === 'reconnecting'
+      ? 'Restoring your seat in the room…'
+      : 'Opening your room…';
+
+  return (
+    <div className="relative grid min-h-screen place-items-center overflow-hidden px-6">
+      <AuroraBackground />
+      <div className="animate-rise flex w-full max-w-sm flex-col items-center text-center">
+        <Brand size="lg" />
+        <div className="panel mt-8 w-full rounded-3xl p-7">
+          <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl border border-violet-400/25 bg-violet-500/10">
+            {connectionIssue ? (
+              <WifiOff className="h-6 w-6 text-amber-300" />
+            ) : (
+              <Loader2 className="h-6 w-6 animate-spin text-violet-300" />
+            )}
+          </div>
+          <p className="font-display mt-4 text-base font-semibold text-white">{message}</p>
+          <p className="mt-1.5 text-xs leading-relaxed text-white/40">
+            Server-authoritative playback is being re-aligned to your clock. This usually takes a
+            second.
+          </p>
+          <div className="mt-5 flex items-center justify-center gap-1.5">
+            <span className="h-1 w-1 animate-pulse rounded-full bg-violet-400" />
+            <span
+              className="h-1 w-1 animate-pulse rounded-full bg-cyan-400"
+              style={{ animationDelay: '180ms' }}
+            />
+            <span
+              className="h-1 w-1 animate-pulse rounded-full bg-fuchsia-400"
+              style={{ animationDelay: '360ms' }}
+            />
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

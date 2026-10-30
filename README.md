@@ -1,153 +1,180 @@
 # Vybe 🎵
-> **One Beat. Every Device.**  
-> Modern, real-time, multi-device synchronized music & media web application.
 
-Vybe allows multiple devices to connect to the same room using a unique 6-digit numeric room code. When the host/admin plays, pauses, resumes, skips, or seeks a track, the same action happens across every connected participant as simultaneously as technically possible.
+> **One Beat. Every Device.**
+> A real-time, multi-device listening room for YouTube, Spotify, direct audio and uploads.
 
----
-
-## ⚡ Core Features
-
-- **Strict Two-Page Architecture**:
-  - **Page 1: Room Entry Page (`/`)**:
-    - "Create Room" generates a unique 6-digit room code; creator automatically becomes **ADMIN**.
-    - "Join Room" with 6-digit numeric input and alphabetic username validation (A–Z, a–z).
-    - Intelligent auto-create fallback: If a typed 6-digit room code does not exist, it is automatically created and the user becomes ADMIN.
-    - Case-insensitive username uniqueness within each room.
-    - Real-time animated canvas waveform visualizer.
-  - **Page 2: Music Room**:
-    - **ADMIN**: Controls play/pause, seek, previous/next, shuffle, repeat mode, master volume, queue reordering/removal, and ending the room.
-    - **USER**: Synchronized listening, artwork/video viewing, upcoming queue inspection, participant list with real-time ping/drift metrics, local volume control, and leave room.
-    - Non-admin participants cannot tamper with shared playback or queue.
-
-- **Sub-100ms Synchronization Engine**:
-  - **Server-Authoritative State**: authoritative playback timestamp and position computed continuously.
-  - **NTP-Style Clock Synchronization**: bidirectional ping/pong measuring Round Trip Time (RTT) and smoothing clock offset ($\Delta$) via median filtering.
-  - **Scheduled Future Playback**: Actions trigger with a future start timestamp ($now + 250\text{ms}$), allowing all devices to pre-buffer and start in phase-locked unison.
-  - **Two-Tier Drift Compensation**:
-    - *Micro-drift (40ms – 350ms)*: Inaudible playback rate nudges (1.03x or 0.97x) to smoothly realign audio without audible pops.
-    - *Macro-drift (> 350ms)*: Direct seek to target authoritative timestamp.
-  - **Automatic Reconnection & Mid-Song Recovery**: Instant state recovery when joining or recovering from network drop.
-
-- **Unified Multi-Source Media Queue**:
-  - **YouTube Integration**:
-    - Supports standard YouTube links, YouTube Shorts, YouTube Music, and YouTube playlists.
-    - Uses the official **YouTube IFrame Player API** (no unauthorized extraction or proxying).
-    - **Video Mode** (watch synchronized video together in compact or theater view) and **Audio Mode** (album artwork and waveform visualizer).
-    - Embed restriction detection: gracefully alerts admin and offers a 1-click skip if video owner disables embedding.
-  - **Spotify Integration**:
-    - Supports Spotify tracks, albums, and playlist URLs.
-    - Metadata resolution via official Spotify oEmbed API (artwork, title, artist).
-    - Web Playback SDK connection modal for Spotify Premium users.
-    - Direct "Open in Spotify" deep-link and synchronized progress visualization.
-  - **Direct Audio & User Uploads**:
-    - Direct MP3/WAV/OGG/FLAC/AAC URLs.
-    - Local file upload engine with Multer (up to 30MB).
-    - Preloaded royalty-free demo tracks (Lo-fi Chill, Synthwave, Cyber Electro).
-
-- **Room & Session Resilience**:
-  - 25-second disconnect grace period prevents accidental username forfeiture during browser refreshes or WiFi blips.
-  - Automatic admin promotion if the active host leaves permanently.
-  - Automatic room closure and 6-digit code release when the last participant departs.
+Vybe puts every device in a room on the same beat. One person runs the room, everyone hears the
+same track at the same moment, and a server-authoritative clock keeps drift under control —
+including after refreshes, network drops and mid-song joins.
 
 ---
 
-## 🛠️ Tech Stack
+## Two pages, one room
 
-- **Frontend**:
-  - React 19 + TypeScript + Vite
-  - Tailwind CSS v4 + Custom Glassmorphism Theme
-  - Lucide React Icons
-  - Socket.IO Client
-  - Canvas Waveform Visualizer
-- **Backend**:
-  - Node.js + Express
-  - Socket.IO (WebSockets with polling fallback)
-  - Multer (audio upload storage)
-  - TypeScript + tsx
-- **APIs**:
-  - YouTube IFrame API
-  - Spotify Web Playback SDK & oEmbed
-  - HTML5 Audio & Web Audio API
+**1. Room entry (`/`)**
+
+- Create a room: a unique 6-digit code is generated and the creator becomes **admin**.
+- Join a room by code. Joining a code that does not exist creates it instantly.
+- Usernames are 2–20 letters, unique per room, case-insensitive.
+- A dropped listener keeps their seat and name for 25 seconds; leaving frees it immediately.
+- Deep links work: `/room/123456` prefills the join form.
+
+**2. Music room (`/room/:code`)**
+
+- **Admin:** play, pause, seek, previous/next, shuffle, repeat (off/all/one), add/remove/reorder/
+  clear queue, connect Spotify, end room.
+- **Listener:** synchronized playback, queue/people views, room code + invite link copy, local
+  volume, leave room.
+- Unified player stage for YouTube video/audio modes, Spotify artwork, direct audio and uploads.
+- Live presence with latency and drift per listener, reconnect banner, and staged error handling
+  (embed blocked, removed video, Spotify not connected, browser autoplay gate).
 
 ---
 
-## 🚀 Getting Started
+## How synchronization works
 
-### Prerequisites
-- Node.js (v18 or newer recommended, v25 supported)
-- npm or yarn
+1. **Server-authoritative state.** The server owns playback status, position, queue, settings and
+   a monotonic `version`. Clients never guess.
+2. **NTP-style clock sync.** Clients exchange `sync:ping` / `sync:pong` with the server, discard
+   high-RTT outliers and use a median offset to convert local time to server time.
+3. **Scheduled starts.** Play/seek commands are scheduled ~600 ms in the future, so every client
+   can buffer and begin together.
+4. **Continuous correction.** A drift loop compares the local adapter position against the
+   server-computed position:
+   - under ~260 ms: no correction;
+   - 260 ms–1.2 s: inaudible 1.03× / 0.97× rate nudges;
+   - over 1.2 s: hard seek to the authoritative position.
+5. **Heartbeats + recovery.** The server publishes authoritative snapshots on an interval, and
+   clients request a resume with their `sessionToken` after any reconnect.
 
-### 1. Installation
-Clone the repository and install root, server, and client dependencies:
+---
+
+## Media support
+
+| Source | Resolution | Playback |
+| --- | --- | --- |
+| YouTube video / Shorts / Music | URL parsing + oEmbed | Official YouTube IFrame API |
+| YouTube playlists | YouTube Data API v3 (optional key) → public RSS fallback | IFrame API, one queue item per video |
+| Spotify track / album / playlist | Spotify Web API (optional server credentials) → public oEmbed | Spotify Web Playback SDK, per-listener **Premium** OAuth |
+| Direct audio links | Extension/content detection | HTML5 audio |
+| File uploads | Multer, 30 MB cap | HTML5 audio |
+
+**Spotify limitation, stated honestly:** Spotify does not allow third-party servers to stream its
+catalogue. Vybe never extracts or proxies Spotify audio. Each listener connects their own Premium
+account through PKCE; the room keeps everyone on the same position using the SDK. Free accounts
+see a clear explanation and an **Open in Spotify** fallback.
+
+Uploads use the server filesystem. On serverless hosts such as Vercel they land in `/tmp` and are
+not durable — prefer links for permanent rooms.
+
+---
+
+## Tech stack
+
+- **Client:** React 19, TypeScript, Vite, Tailwind CSS v4, Socket.IO client, Lucide icons,
+  YouTube IFrame API, Spotify Web Playback SDK.
+- **Server:** Node.js, Express, Socket.IO, TypeScript, Multer.
+- **Transport:** WebSockets with polling fallback; server-side validation on every action.
+
+---
+
+## Local development
+
+Requires Node.js 18+ (Node 20/22 recommended).
 
 ```bash
 git clone https://github.com/xHertxd/xHertxdd.git
 cd WaveLink
-
-# Install root dependencies
 npm install
-
-# Install server dependencies
-cd server && npm install
-
-# Install client dependencies
-cd ../client && npm install
-cd ..
+npm --prefix server install
+npm --prefix client install
 ```
 
-### 2. Environment Variables
-Copy `.env.example` in `server/`:
+Create environment files:
 
 ```bash
 cp server/.env.example server/.env
+cp client/.env.example client/.env
 ```
 
-Default variables:
-```env
-PORT=5000
-NODE_ENV=development
-
-# Optional: Spotify Developer API Credentials (oEmbed works without keys)
-SPOTIFY_CLIENT_ID=
-SPOTIFY_CLIENT_SECRET=
-```
-
-### 3. Running in Development Mode
-Run both backend server and Vite frontend concurrently from the root directory:
+Run both processes:
 
 ```bash
 npm run dev
 ```
 
-- **Frontend Application**: `http://localhost:3000`
-- **Backend API & WebSockets**: `http://localhost:5000`
+- Client: <http://localhost:3000>
+- API + WebSockets: <http://localhost:5000>
+- Health check: <http://localhost:5000/api/health>
+
+Vite proxies `/api`, `/uploads` and `/socket.io` to the backend in development. `VITE_SERVER_URL`
+is also set explicitly in `client/.env.example`; either path works.
+
+### Optional integrations
+
+- **YouTube playlists:** set `YOUTUBE_API_KEY` on the server for Data API metadata. Without it,
+  Vybe falls back to the public playlist feed and warns when the list cannot be read.
+- **Spotify:**
+  1. Create an app in the [Spotify developer dashboard](https://developer.spotify.com/dashboard).
+  2. Add `http://localhost:3000/` (and your production origin `/`) as Redirect URIs.
+  3. Set `SPOTIFY_CLIENT_ID` + `SPOTIFY_CLIENT_SECRET` on the server and
+     `VITE_SPOTIFY_CLIENT_ID` on the client.
+  4. Each listener must have Spotify **Premium** to play Spotify tracks in the browser.
 
 ---
 
-## 🚢 Production Build & Deployment
+## Production
 
-### Build
 ```bash
-# Build frontend
-npm run build
-
-# Build backend
-cd server && npm run build
+npm run build          # client -> client/dist
+npm run build:server   # server -> server/dist
+npm start              # single Node process serves API + client/dist
 ```
 
-### Run Production Server
-```bash
-cd server
-npm run start
-```
+When the server finds `client/dist`, it serves the built SPA and rewrites unknown paths to
+`index.html`, so `/room/:code` works from one process.
 
-### Deployment Options:
-- **Render / Railway**: Deploy the `server/` directory as a Node.js web service. Set the build command to `npm install && npm run build` and start command to `npm run start`.
-- **Vercel / Netlify**: Deploy the `client/` directory with root set to `client`, build command `npm run build`, and output directory `dist`. Update Vite proxy or `SERVER_URL` in `client/src/services/socket.ts` to point to your deployed backend domain.
+### Vercel (frontend) + Node host (backend) — recommended
+
+1. Deploy `server/` to Render, Railway, Fly.io or any Node host that supports long-lived
+   WebSockets. Build: `npm install && npm run build`; start: `npm start`. Set the server env vars
+   from `server/.env.example` and `ALLOWED_ORIGINS` to your Vercel URL.
+2. Deploy the repository root to Vercel. `vercel.json` builds the client and rewrites SPA routes.
+3. In Vercel, set `VITE_SERVER_URL=https://your-backend.example.com` (no trailing slash) and
+   `VITE_SPOTIFY_CLIENT_ID`.
+4. Add the Vercel origin to Spotify Redirect URIs and to `ALLOWED_ORIGINS`.
+
+### Vercel-only / serverless caveats
+
+Vercel can run the Node server and supports native WebSockets, but each serverless instance has
+its own memory. Rooms, sessions and queues live in memory today, so a multi-instance deployment
+can route two listeners to different instances and break a room. Use a single instance for demos,
+or add a shared state/adapter layer (Redis + Socket.IO Redis adapter) before scaling out.
+Uploads on serverless are ephemeral (`/tmp`).
 
 ---
 
-## 📄 License
-MIT License. Built for modern synchronized listening experiences.
+## Security & validation
 
+- Every socket action is validated server-side; admin-only actions return `FORBIDDEN`.
+- Sessions use a per-participant `sessionToken`, preventing user-id spoofing on reconnect.
+- Username and room-code formats are enforced on both client and server.
+- Upload MIME/extension and size limits are enforced with Multer.
+- `ALLOWED_ORIGINS` restricts browser origins in production.
+
+---
+
+## Scripts
+
+| Command | What it does |
+| --- | --- |
+| `npm run dev` | Server + client with live reload |
+| `npm run server` | Server only (`tsx watch`) |
+| `npm run client` | Client only (Vite) |
+| `npm run build` | Production client build |
+| `npm run build:server` | Type-check/compile server |
+| `npm start` | Start the server process |
+
+---
+
+MIT License. Built for listening together.

@@ -1,624 +1,426 @@
-import React, { useState, useEffect } from 'react';
-import type { RoomState, RoomUser, SyncMetrics, UnifiedMediaItem } from '../types.js';
-import { socket } from '../services/socket.js';
-import { syncEngine } from '../services/syncEngine.js';
-import { HTML5AudioPlayer } from '../components/player/HTML5AudioPlayer.js';
-import { YouTubePlayer } from '../components/player/YouTubePlayer.js';
-import { SpotifyPlayer } from '../components/player/SpotifyPlayer.js';
-import { UnifiedQueue } from '../components/queue/UnifiedQueue.js';
-import { ParticipantsList } from '../components/room/ParticipantsList.js';
-import { AudioWaveformVisualizer } from '../components/visualizer/AudioWaveformVisualizer.js';
+import { useEffect, useMemo, useState } from 'react';
 import {
-  Play,
-  Pause,
-  SkipBack,
-  SkipForward,
-  Shuffle,
-  Repeat,
-  Repeat1,
-  Volume2,
-  VolumeX,
-  Copy,
   Check,
+  Copy,
   Crown,
-  Radio,
-  ListMusic,
-  Users
+  LogOut,
+  Power,
+  Share2,
+  ShieldCheck,
+  Wifi,
+  WifiOff,
 } from 'lucide-react';
+import type { RoomState, RoomUser } from '../types.js';
+import type { RoomPhase } from '../hooks/useRoomSession.js';
+import { useMediaPlayer } from '../hooks/useMediaPlayer.js';
+import { clockSync } from '../services/clockSync.js';
+import { socket } from '../services/socket.js';
+import { spotify } from '../services/spotify.js';
+import { Brand } from '../components/Brand.js';
+import { AuroraBackground } from '../components/AuroraBackground.js';
+import { NowPlayingCard } from '../components/room/NowPlayingCard.js';
+import { SidePanel } from '../components/room/SidePanel.js';
+import { AddMediaModal } from '../components/AddMediaModal.js';
+import { ConfirmDialog } from '../components/Modal.js';
+import { cn } from '../lib/cn.js';
+import { initials } from '../lib/format.js';
 
 interface MusicRoomPageProps {
-  initialState: RoomState;
+  room: RoomState;
   currentUser: RoomUser;
-  onExit: () => void;
+  phase: RoomPhase;
+  connected: boolean;
+  onLeave: () => void;
+  onEndRoom: () => void;
+  notify: (title: string, description?: string, tone?: 'info' | 'success' | 'error') => void;
 }
 
-export const MusicRoomPage: React.FC<MusicRoomPageProps> = ({
-  initialState,
-  currentUser: initialUser,
-  onExit
-}) => {
-  const [roomState, setRoomState] = useState<RoomState>(initialState);
-  const [currentUser, setCurrentUser] = useState<RoomUser>(initialUser);
+const YOUTUBE_MODE_KEY = 'vybe_youtube_mode';
+const THEATER_KEY = 'vybe_theater';
+const VOLUME_KEY = 'vybe_volume';
+
+export function MusicRoomPage({
+  room,
+  currentUser,
+  phase,
+  connected,
+  onLeave,
+  onEndRoom,
+  notify,
+}: MusicRoomPageProps) {
+  const isAdmin = currentUser.isAdmin;
+  const [addOpen, setAddOpen] = useState(false);
+  const [confirm, setConfirm] = useState<'clear' | 'end' | null>(null);
   const [copiedCode, setCopiedCode] = useState(false);
-  const [activeTab, setActiveTab] = useState<'queue' | 'users'>('queue');
-  const [localVolume, setLocalVolume] = useState<number>(85);
-  const [isMuted, setIsMuted] = useState(false);
-  const [youtubeViewMode, setYoutubeViewMode] = useState<'video' | 'audio'>('video');
+  const [theater, setTheater] = useState(() => localStorage.getItem(THEATER_KEY) === '1');
+  const [youtubeMode, setYouTubeMode] = useState<'video' | 'audio'>(
+    () => (localStorage.getItem(YOUTUBE_MODE_KEY) === 'audio' ? 'audio' : 'video')
+  );
+  const [volume, setVolume] = useState(() => {
+    const stored = Number(localStorage.getItem(VOLUME_KEY));
+    return Number.isFinite(stored) && stored >= 0 && stored <= 1 ? stored : 0.8;
+  });
+  const [clock, setClock] = useState(() => clockSync.getMetrics());
+  const spotifyVersion = 0;
+  const [spotifyProfile, setSpotifyProfile] = useState<{ name: string; premium: boolean } | null>(null);
 
-  // Playback timer & progress state
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
-  const [isScrubbing, setIsScrubbing] = useState(false);
-  const [scrubPosition, setScrubPosition] = useState(0);
+  const spotifyConnected = spotify.isConnected();
+  const track = room.playback.currentTrack;
 
-  // Sync metrics from sync engine
-  const [metrics, setMetrics] = useState<SyncMetrics>({
-    ping: 15,
-    clockOffset: 0,
-    drift: 0,
-    inSync: true,
-    correctionMode: 'none'
+  const player = useMediaPlayer({
+    track,
+    playback: room.playback,
+    roomCode: room.roomCode,
+    volume,
+    spotifyConnected,
+    spotifyVersion,
   });
 
-  const isAdmin = currentUser.isAdmin;
-  const currentTrack = roomState.playback.currentTrack;
-  const isPlaying = roomState.playback.status === 'playing';
+  useEffect(() => clockSync.subscribe(setClock), []);
 
-  // Bind Room to Sync Engine
   useEffect(() => {
-    syncEngine.setRoom(roomState.roomCode);
+    localStorage.setItem(THEATER_KEY, theater ? '1' : '0');
+  }, [theater]);
 
-    const unsubMetrics = syncEngine.subscribeMetrics((newMetrics) => {
-      setMetrics(newMetrics);
-    });
-
-    return () => {
-      unsubMetrics();
-      syncEngine.setRoom(null);
-    };
-  }, [roomState.roomCode]);
-
-  // Listen for real-time room updates
   useEffect(() => {
-    const handleRoomState = (newState: RoomState) => {
-      setRoomState(newState);
-      // Update currentUser from the updated user list
-      const me = newState.users.find((u) => u.id === currentUser.id);
-      if (me) {
-        setCurrentUser(me);
-      }
-    };
+    localStorage.setItem(YOUTUBE_MODE_KEY, youtubeMode);
+  }, [youtubeMode]);
 
-    const handlePlaybackSync = (data: any) => {
-      setRoomState((prev) => ({
-        ...prev,
-        playback: data
-      }));
-      syncEngine.onPlaybackSync(data);
-    };
-
-    const handleQueueUpdated = (data: { queue: UnifiedMediaItem[]; currentIndex: number }) => {
-      setRoomState((prev) => ({
-        ...prev,
-        queue: data.queue,
-        currentIndex: data.currentIndex
-      }));
-    };
-
-    const handleSettingsUpdated = (settings: any) => {
-      setRoomState((prev) => ({
-        ...prev,
-        settings
-      }));
-    };
-
-    const handleAdminChanged = (data: { newAdminId: string; username: string }) => {
-      setRoomState((prev) => {
-        const updatedUsers = prev.users.map((u) => ({
-          ...u,
-          isAdmin: u.id === data.newAdminId
-        }));
-        return {
-          ...prev,
-          adminId: data.newAdminId,
-          users: updatedUsers
-        };
-      });
-
-      if (currentUser.id === data.newAdminId) {
-        setCurrentUser((prev) => ({ ...prev, isAdmin: true }));
-      }
-    };
-
-    const handleRoomEnded = () => {
-      alert('This room has been ended by the admin.');
-      onExit();
-    };
-
-    socket.on('room:state', handleRoomState);
-    socket.on('playback:sync', handlePlaybackSync);
-    socket.on('queue:updated', handleQueueUpdated);
-    socket.on('settings:updated', handleSettingsUpdated);
-    socket.on('room:admin_changed', handleAdminChanged);
-    socket.on('room:ended', handleRoomEnded);
-
-    return () => {
-      socket.off('room:state', handleRoomState);
-      socket.off('playback:sync', handlePlaybackSync);
-      socket.off('queue:updated', handleQueueUpdated);
-      socket.off('settings:updated', handleSettingsUpdated);
-      socket.off('room:admin_changed', handleAdminChanged);
-      socket.off('room:ended', handleRoomEnded);
-    };
-  }, [currentUser.id, onExit]);
-
-  // Track time ticker for non-video audio
   useEffect(() => {
-    if (!currentTrack) {
-      setCurrentTime(0);
-      setDuration(0);
+    localStorage.setItem(VOLUME_KEY, String(volume));
+  }, [volume]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!spotifyConnected) {
+      setSpotifyProfile(null);
       return;
     }
-
-    setDuration(currentTrack.duration || 180);
-
-    const interval = setInterval(() => {
-      if (!isScrubbing) {
-        const authorTime = syncEngine.getAuthoritativePosition();
-        setCurrentTime(authorTime);
+    void spotify.getProfile().then((profile) => {
+      if (cancelled) return;
+      setSpotifyProfile(profile);
+      if (profile && !profile.premium) {
+        notify(
+          'Spotify Premium required',
+          'Your Spotify account is connected, but playback in third-party players needs Premium.',
+          'info'
+        );
       }
-    }, 250);
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [spotifyConnected, spotifyVersion]);
 
-    return () => clearInterval(interval);
-  }, [currentTrack, isScrubbing]);
+  const onlineUsers = useMemo(() => room.users.filter((user) => user.isOnline), [room.users]);
+  const adminUser = room.users.find((user) => user.isAdmin);
+  const latency = Math.max(1, Math.round(clock.rtt / 2));
 
-  // Copy Room Code Helper
-  const handleCopyCode = () => {
-    navigator.clipboard.writeText(roomState.roomCode);
-    setCopiedCode(true);
-    setTimeout(() => setCopiedCode(false), 2000);
-  };
-
-  // Playback Control Handlers (Admin Only)
-  const handleTogglePlay = () => {
-    if (!isAdmin) return;
-    if (isPlaying) {
-      socket.emit('playback:pause', { roomCode: roomState.roomCode });
-    } else {
-      socket.emit('playback:play', { roomCode: roomState.roomCode });
+  const copyCode = async () => {
+    try {
+      await navigator.clipboard.writeText(room.roomCode);
+      setCopiedCode(true);
+      notify('Room code copied', `${room.roomCode} is on your clipboard.`, 'success');
+      window.setTimeout(() => setCopiedCode(false), 1_800);
+    } catch {
+      notify('Copy failed', 'Copy the room code manually.', 'error');
     }
   };
 
-  const handleNextTrack = () => {
-    if (!isAdmin) return;
-    socket.emit('playback:next', { roomCode: roomState.roomCode });
+  const shareRoom = async () => {
+    const url = `${window.location.origin}/room/${room.roomCode}`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: 'Join my Vybe room', text: 'Same beat, every device.', url });
+      } else {
+        await navigator.clipboard.writeText(url);
+        notify('Invite link copied', 'Send it to anyone you want in the room.', 'success');
+      }
+    } catch {
+      // Sharing was cancelled or unsupported; no need to surface an error.
+    }
   };
 
-  const handlePrevTrack = () => {
-    if (!isAdmin) return;
-    socket.emit('playback:prev', { roomCode: roomState.roomCode });
+  const connectSpotify = () => {
+    void spotify
+      .beginAuth(window.location.pathname + window.location.search)
+      .catch((error: unknown) =>
+        notify(
+          'Spotify unavailable',
+          error instanceof Error ? error.message : 'Could not open Spotify sign-in.',
+          'error'
+        )
+      );
   };
 
-  const handleSeekChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!isAdmin) return;
-    const pos = parseFloat(e.target.value);
-    setScrubPosition(pos);
-    setIsScrubbing(true);
-  };
-
-  const handleSeekCommit = () => {
-    if (!isAdmin) return;
-    setIsScrubbing(false);
-    socket.emit('playback:seek', {
-      roomCode: roomState.roomCode,
-      position: scrubPosition
-    });
-  };
-
-  const handleToggleShuffle = () => {
-    if (!isAdmin) return;
-    socket.emit('settings:update', {
-      roomCode: roomState.roomCode,
-      settings: { isShuffle: !roomState.settings.isShuffle }
-    });
-  };
-
-  const handleToggleRepeat = () => {
-    if (!isAdmin) return;
-    const modes: Array<'off' | 'all' | 'one'> = ['off', 'all', 'one'];
-    const nextIdx = (modes.indexOf(roomState.settings.repeatMode) + 1) % modes.length;
-    socket.emit('settings:update', {
-      roomCode: roomState.roomCode,
-      settings: { repeatMode: modes[nextIdx] }
-    });
-  };
-
-  const handleLeaveRoom = () => {
-    socket.emit('room:leave', { roomCode: roomState.roomCode });
-    onExit();
-  };
-
-  const handleEndRoom = () => {
-    if (!isAdmin) return;
-    socket.emit('room:end', { roomCode: roomState.roomCode });
-    onExit();
-  };
-
-  // Time formatter
-  const formatTime = (secs: number) => {
-    const safeSecs = Math.max(0, Math.floor(secs));
-    const m = Math.floor(safeSecs / 60);
-    const s = safeSecs % 60;
-    return `${m}:${s < 10 ? '0' : ''}${s}`;
-  };
-
-  const currentDisplayTime = isScrubbing ? scrubPosition : currentTime;
-  const progressPercent = duration > 0 ? Math.min(100, (currentDisplayTime / duration) * 100) : 0;
+  const reconnectBanner = !connected || phase === 'reconnecting';
 
   return (
-    <div className="relative min-h-screen w-full flex flex-col bg-[#090a10] text-slate-100 overflow-x-hidden">
-      {/* Background ambient lighting */}
-      <div className="absolute top-0 left-1/3 w-[600px] h-[300px] bg-purple-600/10 rounded-full blur-[160px] pointer-events-none" />
-      <div className="absolute bottom-0 right-1/4 w-[500px] h-[300px] bg-cyan-600/10 rounded-full blur-[160px] pointer-events-none" />
+    <div className="relative min-h-screen">
+      <AuroraBackground dense />
 
-      {/* Synchronized Media Engines (Audio & Video) */}
-      <HTML5AudioPlayer
-        track={currentTrack}
-        playbackState={roomState.playback}
-        roomCode={roomState.roomCode}
-        localVolume={isMuted ? 0 : localVolume}
-        sharedVolume={roomState.settings.sharedVolume}
-        onTimeUpdate={(time, dur) => {
-          if (!isScrubbing) {
-            setCurrentTime(time);
-            if (dur > 0) setDuration(dur);
-          }
+      {/* ------------------------------------------------------------- header -- */}
+      <header className="sticky top-0 z-40 border-b border-white/[0.06] bg-[#06060a]/72 backdrop-blur-xl">
+        <div className="mx-auto flex h-16 w-full max-w-[1580px] items-center justify-between gap-3 px-3 sm:px-5 lg:px-8">
+          <div className="flex min-w-0 items-center gap-3">
+            <Brand size="sm" />
+            <div className="hidden h-7 w-px bg-white/10 sm:block" />
+            <button
+              type="button"
+              onClick={() => void copyCode()}
+              className="group flex items-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.03] px-2.5 py-1.5 transition-colors hover:border-white/15 hover:bg-white/[0.06]"
+              title="Copy room code"
+            >
+              <span className="text-[9px] font-semibold uppercase tracking-[0.18em] text-white/30">
+                Room
+              </span>
+              <span className="font-mono text-[13px] font-semibold tracking-[0.16em] text-white">
+                {room.roomCode}
+              </span>
+              {copiedCode ? (
+                <Check className="h-3 w-3 text-emerald-300" />
+              ) : (
+                <Copy className="h-3 w-3 text-white/30 group-hover:text-white/60" />
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => void shareRoom()}
+              className="icon-btn hidden h-8 w-8 sm:inline-flex"
+              title="Share room"
+              aria-label="Share room"
+            >
+              <Share2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span
+              className={cn(
+                'hidden items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-medium sm:flex',
+                reconnectBanner
+                  ? 'border-amber-300/25 bg-amber-400/10 text-amber-200'
+                  : 'border-emerald-300/20 bg-emerald-400/[0.07] text-emerald-200/90'
+              )}
+            >
+              {reconnectBanner ? <WifiOff className="h-3 w-3" /> : <Wifi className="h-3 w-3" />}
+              {reconnectBanner ? 'Reconnecting' : `${latency}ms · synced`}
+            </span>
+
+            <div className="hidden items-center -space-x-2 md:flex">
+              {onlineUsers.slice(0, 4).map((user) => (
+                <div
+                  key={user.id}
+                  className={cn(
+                    'grid h-7 w-7 place-items-center rounded-full border-2 border-[#06060a] bg-gradient-to-br text-[9px] font-bold text-white',
+                    user.isAdmin ? 'from-amber-400 to-orange-500' : 'from-violet-500 to-fuchsia-500'
+                  )}
+                  title={user.username}
+                >
+                  {initials(user.username)}
+                </div>
+              ))}
+              {onlineUsers.length > 4 && (
+                <div className="grid h-7 w-7 place-items-center rounded-full border-2 border-[#06060a] bg-white/10 text-[9px] font-semibold text-white/60">
+                  +{onlineUsers.length - 4}
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center gap-1 rounded-xl border border-white/[0.07] bg-white/[0.03] px-1.5 py-1">
+              <div className="grid h-6 w-6 place-items-center rounded-full bg-gradient-to-br from-violet-500 to-cyan-500 text-[9px] font-bold text-white">
+                {initials(currentUser.username)}
+              </div>
+              <div className="hidden pr-1 sm:block">
+                <p className="max-w-[100px] truncate text-[11px] font-semibold leading-tight text-white">
+                  {currentUser.username}
+                </p>
+                <p className="flex items-center gap-0.5 text-[8.5px] leading-tight text-white/35">
+                  {isAdmin ? (
+                    <>
+                      <Crown className="h-2.5 w-2.5 text-amber-300" />
+                      Admin
+                    </>
+                  ) : (
+                    'Listener'
+                  )}
+                </p>
+              </div>
+            </div>
+
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={() => setConfirm('end')}
+                className="icon-btn h-8 w-8 hover:bg-rose-500/10 hover:text-rose-300"
+                title="End room"
+                aria-label="End room"
+              >
+                <Power className="h-3.5 w-3.5" />
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={onLeave}
+              className="btn btn-ghost h-8 rounded-lg px-2.5 text-[11px]"
+              title="Leave room"
+            >
+              <LogOut className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Leave</span>
+            </button>
+          </div>
+        </div>
+
+        {reconnectBanner && (
+          <div className="border-t border-amber-300/15 bg-amber-400/[0.06] px-4 py-1.5 text-center text-[10.5px] text-amber-200/80">
+            Connection lost — reconnecting. Your seat is being held and playback will re-align
+            automatically.
+          </div>
+        )}
+      </header>
+
+      {/* --------------------------------------------------------------- main -- */}
+      <main className="mx-auto w-full max-w-[1580px] px-3 pb-10 pt-4 sm:px-5 sm:pt-5 lg:px-8">
+        <div
+          className={cn(
+            'grid items-start gap-4 lg:gap-5',
+            !theater && 'lg:grid-cols-[minmax(0,1fr)_350px] xl:grid-cols-[minmax(0,1fr)_390px]'
+          )}
+        >
+          <div className="min-w-0 space-y-4">
+            <NowPlayingCard
+              room={room}
+              currentUser={currentUser}
+              isAdmin={isAdmin}
+              player={player}
+              volume={volume}
+              onVolumeChange={setVolume}
+              youtubeMode={youtubeMode}
+              onYouTubeModeChange={setYouTubeMode}
+              theater={theater}
+              onToggleTheater={() => setTheater((value) => !value)}
+              spotifyConnected={spotifyConnected}
+              spotifyConfigured={spotify.configured}
+              onConnectSpotify={connectSpotify}
+              onOpenAdd={() => setAddOpen(true)}
+            />
+
+            <div className="panel flex flex-wrap items-center justify-between gap-3 rounded-2xl px-4 py-3">
+              <div className="flex items-center gap-2">
+                <div className="grid h-8 w-8 place-items-center rounded-lg bg-white/[0.05]">
+                  <ShieldCheck className="h-4 w-4 text-emerald-300/80" />
+                </div>
+                <div>
+                  <p className="text-[11px] font-semibold text-white/70">
+                    {isAdmin ? 'You are running this room' : `${adminUser?.username || 'The admin'} is running this room`}
+                  </p>
+                  <p className="text-[10px] text-white/30">
+                    {isAdmin
+                      ? 'Playback, queue and settings are locked to you.'
+                      : 'Only the admin can change playback. Your volume stays local.'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                {spotify.configured && (
+                  <button
+                    type="button"
+                    onClick={connectSpotify}
+                    className={cn(
+                      'btn h-8 rounded-lg px-3 text-[11px]',
+                      spotifyConnected ? 'btn-ghost' : 'btn-ghost'
+                    )}
+                    title="Connect Spotify Premium for Spotify links"
+                  >
+                    <span
+                      className={cn(
+                        'h-1.5 w-1.5 rounded-full',
+                        spotifyConnected ? 'bg-emerald-400' : 'bg-white/30'
+                      )}
+                    />
+                    {spotifyConnected
+                      ? spotifyProfile?.name
+                        ? `Spotify · ${spotifyProfile.name}`
+                        : 'Spotify connected'
+                      : 'Connect Spotify'}
+                  </button>
+                )}
+                {isAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => setAddOpen(true)}
+                    className="btn btn-primary h-8 rounded-lg px-3 text-[11px]"
+                  >
+                    Add media
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {theater && (
+              <div className="lg:hidden">
+                <SidePanel
+                  room={room}
+                  currentUser={currentUser}
+                  isAdmin={isAdmin}
+                  onOpenAdd={() => setAddOpen(true)}
+                  onRequestClear={() => setConfirm('clear')}
+                  notify={notify}
+                />
+              </div>
+            )}
+          </div>
+
+          {!theater && (
+            <div className="lg:sticky lg:top-[88px] lg:h-[calc(100vh-104px)]">
+              <SidePanel
+                room={room}
+                currentUser={currentUser}
+                isAdmin={isAdmin}
+                onOpenAdd={() => setAddOpen(true)}
+                onRequestClear={() => setConfirm('clear')}
+                notify={notify}
+              />
+            </div>
+          )}
+        </div>
+
+        <p className="mt-6 flex items-center justify-center gap-1.5 text-center text-[10px] text-white/20">
+          <span className="h-1 w-1 rounded-full bg-violet-400/60" />
+          Server-authoritative clock · peer drift corrected continuously · audio stays on your device
+        </p>
+      </main>
+
+      <AddMediaModal open={addOpen} onClose={() => setAddOpen(false)} notify={notify} />
+
+      <ConfirmDialog
+        open={confirm === 'clear'}
+        title="Clear the queue?"
+        description="This removes every track and stops playback for everyone in the room."
+        confirmLabel="Clear queue"
+        danger
+        onClose={() => setConfirm(null)}
+        onConfirm={() => {
+          socket.emit('queue:clear', { roomCode: room.roomCode });
+          notify('Queue cleared', 'The room is ready for something new.', 'info');
         }}
       />
 
-      {/* Top Header */}
-      <header className="w-full border-b border-white/10 bg-[#0e101a]/70 backdrop-blur-xl px-4 py-3 flex items-center justify-between z-20 sticky top-0">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-purple-600 to-cyan-500 flex items-center justify-center shadow-md">
-            <Radio className="w-4 h-4 text-white" />
-          </div>
-          <span className="font-black text-sm tracking-wide text-white hidden sm:inline">
-            VYBE
-          </span>
-
-          {/* 6-Digit Room Code with One-Click Copy */}
-          <div className="flex items-center gap-1.5 ml-2 px-3 py-1 bg-white/5 border border-white/10 rounded-xl hover:bg-white/10 transition-colors">
-            <span className="text-[11px] text-slate-400 font-medium">Room</span>
-            <span className="text-xs font-mono font-bold tracking-widest text-purple-300">
-              {roomState.roomCode}
-            </span>
-            <button
-              onClick={handleCopyCode}
-              className="ml-1 p-1 text-slate-400 hover:text-white transition-colors"
-              title="Copy Room Code"
-            >
-              {copiedCode ? (
-                <Check className="w-3.5 h-3.5 text-emerald-400" />
-              ) : (
-                <Copy className="w-3.5 h-3.5" />
-              )}
-            </button>
-          </div>
-        </div>
-
-        {/* Center: Sync Health Status Indicator */}
-        <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-white/[0.03] border border-white/10 text-xs font-mono">
-          <span
-            className={`w-2 h-2 rounded-full ${
-              metrics.inSync
-                ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]'
-                : 'bg-amber-400'
-            }`}
-          />
-          <span className="text-slate-300 text-[11px] hidden sm:inline">
-            Sync Drift: <strong className="text-white">{metrics.drift}ms</strong>
-          </span>
-          <span className="text-slate-500 text-[11px]">({metrics.ping}ms ping)</span>
-        </div>
-
-        {/* Right: User Role Badge & Leave Button */}
-        <div className="flex items-center gap-2">
-          {isAdmin ? (
-            <span className="flex items-center gap-1 text-[11px] bg-gradient-to-r from-amber-500/20 to-yellow-500/20 border border-amber-500/40 text-amber-300 font-bold px-2 py-1 rounded-lg shadow-sm">
-              <Crown className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
-              ADMIN
-            </span>
-          ) : (
-            <span className="text-[11px] bg-white/10 text-slate-300 px-2 py-1 rounded-lg font-medium">
-              LISTENER
-            </span>
-          )}
-
-          <button
-            onClick={handleLeaveRoom}
-            className="px-2.5 py-1 text-xs text-slate-400 hover:text-white rounded-lg hover:bg-white/5 transition-colors"
-          >
-            Leave
-          </button>
-        </div>
-      </header>
-
-      {/* Main Room Layout: Player Stage + Queue / Participants Panel */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 z-10">
-        {/* Left / Center: Synchronized Player Stage */}
-        <div className="lg:col-span-8 flex flex-col items-center justify-between bg-[#12141e]/70 border border-white/10 rounded-3xl p-6 md:p-8 backdrop-blur-xl shadow-2xl relative">
-          {/* YouTube Player Component (Video or Audio mode) */}
-          {currentTrack?.provider === 'youtube' && (
-            <div className="w-full mb-4">
-              <YouTubePlayer
-                track={currentTrack}
-                playbackState={roomState.playback}
-                roomCode={roomState.roomCode}
-                isAdmin={isAdmin}
-                localVolume={isMuted ? 0 : localVolume}
-                sharedVolume={roomState.settings.sharedVolume}
-                viewMode={youtubeViewMode}
-                onToggleViewMode={() =>
-                  setYoutubeViewMode(youtubeViewMode === 'video' ? 'audio' : 'video')
-                }
-                onTimeUpdate={(time, dur) => {
-                  if (!isScrubbing) {
-                    setCurrentTime(time);
-                    if (dur > 0) setDuration(dur);
-                  }
-                }}
-              />
-            </div>
-          )}
-
-          {/* Spotify Player Component */}
-          {currentTrack?.provider === 'spotify' && (
-            <SpotifyPlayer
-              track={currentTrack}
-              playbackState={roomState.playback}
-              roomCode={roomState.roomCode}
-              isAdmin={isAdmin}
-              onTimeUpdate={(time, dur) => {
-                if (!isScrubbing) {
-                  setCurrentTime(time);
-                  if (dur > 0) setDuration(dur);
-                }
-              }}
-            />
-          )}
-
-          {/* Center Stage: Artwork & Waveform (When not in YouTube video mode) */}
-          {(currentTrack?.provider !== 'youtube' || youtubeViewMode === 'audio') && (
-            <div className="w-full flex flex-col items-center my-auto py-4">
-              <div className="relative group">
-                {/* Artwork with subtle neon glow */}
-                <div className="w-56 h-56 md:w-64 md:h-64 rounded-2xl overflow-hidden shadow-2xl border border-white/15 bg-black/40 relative">
-                  <img
-                    src={
-                      currentTrack?.thumbnail ||
-                      'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=500&auto=format&fit=crop&q=80'
-                    }
-                    alt={currentTrack?.title || 'Track Art'}
-                    className={`w-full h-full object-cover transition-transform duration-700 ${
-                      isPlaying ? 'scale-105' : 'scale-100'
-                    }`}
-                    referrerPolicy="no-referrer"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent pointer-events-none" />
-                </div>
-
-                {/* Animated Waveform Overlay */}
-                <div className="w-56 md:w-64 h-12 mt-4 opacity-75">
-                  <AudioWaveformVisualizer isPlaying={isPlaying} barCount={26} />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Track Information Display */}
-          <div className="w-full max-w-xl text-center mt-4">
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-white/5 border border-white/10 text-[10px] uppercase font-bold text-slate-400 mb-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-purple-400" />
-              {currentTrack?.provider || 'Direct Audio'}
-            </div>
-            <h2 className="text-xl md:text-2xl font-black text-white truncate px-4">
-              {currentTrack?.title || 'No track playing'}
-            </h2>
-            <p className="text-xs md:text-sm text-slate-400 truncate mt-1">
-              {currentTrack?.artist || 'Add a song to the queue to begin'}
-            </p>
-          </div>
-
-          {/* Progress Bar & Timers */}
-          <div className="w-full max-w-xl mt-6">
-            <div className="relative group flex items-center">
-              <input
-                type="range"
-                min={0}
-                max={duration || 100}
-                step={0.5}
-                value={currentDisplayTime}
-                onChange={handleSeekChange}
-                onMouseUp={handleSeekCommit}
-                onTouchEnd={handleSeekCommit}
-                disabled={!isAdmin}
-                className={`w-full h-2 rounded-lg cursor-pointer ${
-                  isAdmin ? 'accent-purple-500' : 'cursor-default opacity-80'
-                }`}
-                style={{
-                  background: `linear-gradient(to right, #8b5cf6 ${progressPercent}%, rgba(255,255,255,0.1) ${progressPercent}%)`
-                }}
-              />
-            </div>
-            <div className="flex justify-between items-center text-[11px] font-mono text-slate-400 mt-2 px-0.5">
-              <span>{formatTime(currentDisplayTime)}</span>
-              {!isAdmin && (
-                <span className="text-[10px] text-slate-500 italic">
-                  Admin controls shared seek
-                </span>
-              )}
-              <span>{formatTime(duration)}</span>
-            </div>
-          </div>
-
-          {/* Synchronized Playback Controls */}
-          <div className="w-full max-w-xl flex items-center justify-between mt-6 pt-4 border-t border-white/5">
-            {/* Left: Shuffle & Repeat (Admin only) */}
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleToggleShuffle}
-                disabled={!isAdmin}
-                className={`p-2 rounded-xl transition-all ${
-                  roomState.settings.isShuffle
-                    ? 'text-cyan-400 bg-cyan-500/10 border border-cyan-500/30 shadow-sm'
-                    : 'text-slate-500 hover:text-slate-300'
-                } ${!isAdmin && 'opacity-40 cursor-not-allowed'}`}
-                title={isAdmin ? 'Toggle Shuffle' : 'Admin controls shuffle'}
-              >
-                <Shuffle className="w-4 h-4" />
-              </button>
-
-              <button
-                onClick={handleToggleRepeat}
-                disabled={!isAdmin}
-                className={`p-2 rounded-xl transition-all ${
-                  roomState.settings.repeatMode !== 'off'
-                    ? 'text-purple-400 bg-purple-500/10 border border-purple-500/30 shadow-sm'
-                    : 'text-slate-500 hover:text-slate-300'
-                } ${!isAdmin && 'opacity-40 cursor-not-allowed'}`}
-                title={isAdmin ? `Repeat: ${roomState.settings.repeatMode}` : 'Admin controls repeat'}
-              >
-                {roomState.settings.repeatMode === 'one' ? (
-                  <Repeat1 className="w-4 h-4" />
-                ) : (
-                  <Repeat className="w-4 h-4" />
-                )}
-              </button>
-            </div>
-
-            {/* Center: Previous, Play/Pause, Next */}
-            <div className="flex items-center gap-4">
-              <button
-                onClick={handlePrevTrack}
-                disabled={!isAdmin}
-                className={`p-3 rounded-2xl bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border border-white/5 transition-transform active:scale-95 ${
-                  !isAdmin && 'opacity-30 cursor-not-allowed'
-                }`}
-                title="Previous Track"
-              >
-                <SkipBack className="w-5 h-5" />
-              </button>
-
-              <button
-                onClick={handleTogglePlay}
-                disabled={!isAdmin}
-                className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-all shadow-xl active:scale-95 ${
-                  isAdmin
-                    ? 'bg-gradient-to-tr from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white shadow-purple-600/40 hover:scale-105'
-                    : 'bg-white/10 text-slate-400 cursor-not-allowed'
-                }`}
-                title={isAdmin ? (isPlaying ? 'Pause' : 'Play') : 'Playback synchronized by Admin'}
-              >
-                {isPlaying ? (
-                  <Pause className="w-6 h-6 fill-white" />
-                ) : (
-                  <Play className="w-6 h-6 fill-white ml-0.5" />
-                )}
-              </button>
-
-              <button
-                onClick={handleNextTrack}
-                disabled={!isAdmin}
-                className={`p-3 rounded-2xl bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border border-white/5 transition-transform active:scale-95 ${
-                  !isAdmin && 'opacity-30 cursor-not-allowed'
-                }`}
-                title="Next Track"
-              >
-                <SkipForward className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Right: Local Volume Slider */}
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setIsMuted(!isMuted)}
-                className="text-slate-400 hover:text-white transition-colors"
-                title="Mute / Unmute Local Audio"
-              >
-                {isMuted || localVolume === 0 ? (
-                  <VolumeX className="w-4 h-4 text-red-400" />
-                ) : (
-                  <Volume2 className="w-4 h-4" />
-                )}
-              </button>
-              <input
-                type="range"
-                min="0"
-                max="100"
-                value={isMuted ? 0 : localVolume}
-                onChange={(e) => {
-                  setLocalVolume(parseInt(e.target.value));
-                  if (isMuted) setIsMuted(false);
-                }}
-                className="w-16 md:w-20 h-1.5 rounded-lg accent-purple-500 cursor-pointer"
-                title={`Your Local Volume: ${localVolume}%`}
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Right Panel: Tabs for Unified Queue & Connected Participants */}
-        <div className="lg:col-span-4 flex flex-col bg-[#12141e]/70 border border-white/10 rounded-3xl p-5 backdrop-blur-xl shadow-2xl h-[560px] lg:h-auto">
-          {/* Tab Selection */}
-          <div className="flex gap-2 p-1 bg-black/30 rounded-xl mb-4 border border-white/5">
-            <button
-              onClick={() => setActiveTab('queue')}
-              className={`flex-1 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
-                activeTab === 'queue'
-                  ? 'bg-purple-600 text-white shadow-md shadow-purple-600/30'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <ListMusic className="w-3.5 h-3.5" />
-              Queue ({roomState.queue.length})
-            </button>
-            <button
-              onClick={() => setActiveTab('users')}
-              className={`flex-1 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
-                activeTab === 'users'
-                  ? 'bg-purple-600 text-white shadow-md shadow-purple-600/30'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <Users className="w-3.5 h-3.5" />
-              Participants ({roomState.users.length})
-            </button>
-          </div>
-
-          {/* Active Tab Content */}
-          <div className="flex-1 overflow-hidden">
-            {activeTab === 'queue' ? (
-              <UnifiedQueue
-                queue={roomState.queue}
-                currentIndex={roomState.currentIndex}
-                roomCode={roomState.roomCode}
-                isAdmin={isAdmin}
-                username={currentUser.username}
-              />
-            ) : (
-              <ParticipantsList
-                users={roomState.users}
-                currentUserId={currentUser.id}
-                isAdmin={isAdmin}
-                roomCode={roomState.roomCode}
-                metrics={metrics}
-                onLeaveRoom={handleLeaveRoom}
-                onEndRoom={handleEndRoom}
-              />
-            )}
-          </div>
-        </div>
-      </main>
+      <ConfirmDialog
+        open={confirm === 'end'}
+        title="End this room?"
+        description="Everyone will be disconnected and the room code will stop working immediately."
+        confirmLabel="End room"
+        danger
+        onClose={() => setConfirm(null)}
+        onConfirm={() => {
+          onEndRoom();
+          notify('Room ended', 'Everyone has been disconnected.', 'info');
+        }}
+      />
     </div>
   );
-};
+}

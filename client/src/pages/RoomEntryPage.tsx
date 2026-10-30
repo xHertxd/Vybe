@@ -1,262 +1,356 @@
-import React, { useState, useEffect } from 'react';
-import { socket, getStoredUserId, getStoredUsername, setStoredUsername } from '../services/socket.js';
-import { AudioWaveformVisualizer } from '../components/visualizer/AudioWaveformVisualizer.js';
-import { Radio, Sparkles, ArrowRight, Music, AlertCircle } from 'lucide-react';
+import { useEffect, useState, type FormEvent } from 'react';
+import {
+  ArrowRight,
+  Headphones,
+  Loader2,
+  Lock,
+  Music2,
+  Radio,
+  ShieldCheck,
+  Sparkles,
+  Users,
+  Video,
+  Zap,
+} from 'lucide-react';
+import { Brand } from '../components/Brand.js';
+import { AuroraBackground } from '../components/AuroraBackground.js';
+import { Waveform } from '../components/Waveform.js';
+import { cn } from '../lib/cn.js';
+import type { RoomPhase } from '../hooks/useRoomSession.js';
 
 interface RoomEntryPageProps {
-  onJoinSuccess: (roomCode: string, user: any, state: any) => void;
+  onCreate: (username: string) => void;
+  onJoin: (roomCode: string, username: string) => void;
+  phase: RoomPhase;
+  connected: boolean;
+  initialUsername: string;
+  initialCode?: string;
 }
 
-export const RoomEntryPage: React.FC<RoomEntryPageProps> = ({ onJoinSuccess }) => {
-  const [username, setUsername] = useState<string>(() => getStoredUsername() || '');
-  const [roomCode, setRoomCode] = useState<string>('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [isConnected, setIsConnected] = useState(socket.connected);
+type Mode = 'create' | 'join';
 
-  // Monitor socket connection state
+const USERNAME_RE = /^[A-Za-z]{2,20}$/;
+const CODE_RE = /^\d{6}$/;
+
+export function RoomEntryPage({
+  onCreate,
+  onJoin,
+  phase,
+  connected,
+  initialUsername,
+  initialCode,
+}: RoomEntryPageProps) {
+  const [mode, setMode] = useState<Mode>(initialCode ? 'join' : 'create');
+  const [username, setUsername] = useState(initialUsername);
+  const [code, setCode] = useState(initialCode ?? '');
+  const [error, setError] = useState<string | null>(null);
+  const busy = phase === 'connecting';
+
   useEffect(() => {
-    const handleConnect = () => setIsConnected(true);
-    const handleDisconnect = () => setIsConnected(false);
-
-    socket.on('connect', handleConnect);
-    socket.on('disconnect', handleDisconnect);
-
-    // Listen for room join/create responses
-    socket.on('room:created', (data: { roomCode: string; user: any; state: any }) => {
-      setIsLoading(false);
-      setStoredUsername(username.trim());
-      onJoinSuccess(data.roomCode, data.user, data.state);
-    });
-
-    socket.on('room:joined', (data: { roomCode: string; user: any; state: any }) => {
-      setIsLoading(false);
-      setStoredUsername(username.trim());
-      onJoinSuccess(data.roomCode, data.user, data.state);
-    });
-
-    socket.on('room:error', (data: { message: string }) => {
-      setIsLoading(false);
-      setErrorMessage(data.message);
-    });
-
-    return () => {
-      socket.off('connect', handleConnect);
-      socket.off('disconnect', handleDisconnect);
-      socket.off('room:created');
-      socket.off('room:joined');
-      socket.off('room:error');
-    };
-  }, [username, onJoinSuccess]);
-
-  // Username validation helper: Alphabets only (A-Z, a-z)
-  const validateUsername = (name: string): string | null => {
-    const trimmed = name.trim();
-    if (!trimmed) {
-      return 'Please enter a username.';
+    if (initialCode) {
+      setCode(initialCode);
+      setMode('join');
     }
-    if (!/^[a-zA-Z]+$/.test(trimmed)) {
-      return 'Username must contain alphabetic characters only (A-Z, a-z), with no numbers or spaces.';
-    }
-    if (trimmed.length < 2 || trimmed.length > 20) {
-      return 'Username must be between 2 and 20 characters.';
-    }
-    return null;
-  };
+  }, [initialCode]);
 
-  // Handle Create Room (Admin creation)
-  const handleCreateRoom = () => {
-    setErrorMessage(null);
-    const userErr = validateUsername(username);
-    if (userErr) {
-      setErrorMessage(userErr);
+  const submit = (event: FormEvent | { preventDefault: () => void }) => {
+    event.preventDefault();
+    setError(null);
+
+    const cleanName = username.trim();
+    if (!USERNAME_RE.test(cleanName)) {
+      setError('Usernames must be 2–20 letters, letters only.');
+      return;
+    }
+    if (mode === 'join' && !CODE_RE.test(code.trim())) {
+      setError('Enter the 6-digit room code.');
+      return;
+    }
+    if (!connected) {
+      setError('The live server is not connected yet. Give it a moment and try again.');
       return;
     }
 
-    setIsLoading(true);
-    const userId = getStoredUserId();
-    socket.emit('room:create', {
-      username: username.trim(),
-      userId
-    });
-  };
-
-  // Handle Join Room (or auto-create if not found)
-  const handleJoinRoom = (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrorMessage(null);
-
-    const userErr = validateUsername(username);
-    if (userErr) {
-      setErrorMessage(userErr);
-      return;
-    }
-
-    const cleanCode = roomCode.trim();
-    if (!/^\d{6}$/.test(cleanCode)) {
-      setErrorMessage('Room code must be exactly 6 numeric digits.');
-      return;
-    }
-
-    setIsLoading(true);
-    const userId = getStoredUserId();
-    socket.emit('room:join', {
-      roomCode: cleanCode,
-      username: username.trim(),
-      userId
-    });
+    if (mode === 'create') onCreate(cleanName);
+    else onJoin(code.trim(), cleanName);
   };
 
   return (
-    <div className="relative min-h-screen w-full flex flex-col items-center justify-between p-6 overflow-hidden bg-[#090a10]">
-      {/* Ambient background glows */}
-      <div className="absolute top-1/4 -left-32 w-96 h-96 bg-purple-600/15 rounded-full blur-[128px] pointer-events-none" />
-      <div className="absolute bottom-1/4 -right-32 w-96 h-96 bg-cyan-500/15 rounded-full blur-[128px] pointer-events-none" />
+    <div className="relative min-h-screen overflow-hidden">
+      <AuroraBackground />
 
-      {/* Top Header & Connection Pill */}
-      <header className="w-full max-w-5xl flex items-center justify-between pt-2 z-10">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-purple-600 to-cyan-500 flex items-center justify-center shadow-lg shadow-purple-500/20">
-            <Radio className="w-5 h-5 text-white" />
-          </div>
-          <div>
-            <h1 className="text-xl font-black tracking-tight text-white m-0">
-              VYBE
-            </h1>
-            <p className="text-[11px] font-medium text-slate-400">One Beat. Every Device.</p>
-          </div>
-        </div>
-
-        {/* Server connection pill */}
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/[0.04] border border-white/10 backdrop-blur-md">
-          {isConnected ? (
-            <>
-              <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="text-xs text-slate-300 font-mono">Server Online</span>
-            </>
-          ) : (
-            <>
-              <div className="w-2 h-2 rounded-full bg-red-400 animate-ping" />
-              <span className="text-xs text-red-300 font-mono">Connecting...</span>
-            </>
-          )}
+      <header className="mx-auto flex w-full max-w-[1380px] items-center justify-between px-5 py-6 sm:px-8 lg:px-12">
+        <Brand />
+        <div className="flex items-center gap-2">
+          <span className="chip hidden sm:inline-flex">
+            <span
+              className={cn(
+                'h-1.5 w-1.5 rounded-full',
+                connected ? 'bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.9)]' : 'bg-amber-400'
+              )}
+            />
+            {connected ? 'Live server online' : 'Connecting…'}
+          </span>
+          <span className="chip">
+            <Headphones className="h-3 w-3 text-violet-300" />
+            v2.0
+          </span>
         </div>
       </header>
 
-      {/* Main Form Center Card */}
-      <main className="w-full max-w-md my-auto py-8 z-10">
-        <div className="glass-panel p-8 rounded-3xl shadow-2xl relative border border-white/10">
-          {/* Subtle Top Waveform */}
-          <div className="h-12 w-full mb-6 opacity-60">
-            <AudioWaveformVisualizer isPlaying={true} barCount={28} />
-          </div>
-
-          <div className="text-center mb-6">
-            <h2 className="text-2xl font-extrabold text-white tracking-tight">
-              Synchronized Listening
-            </h2>
-            <p className="text-xs text-slate-400 mt-1.5">
-              Host a room or join one with a 6-digit code. Every device plays in sub-100ms sync.
-            </p>
-          </div>
-
-          {/* Validation & Error Alert */}
-          {errorMessage && (
-            <div className="mb-5 p-3.5 rounded-2xl bg-red-500/15 border border-red-500/30 flex items-start gap-2.5 text-xs text-red-200">
-              <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
-              <div className="leading-relaxed">{errorMessage}</div>
-            </div>
-          )}
-
-          {/* Editable Username Field */}
-          <div className="mb-6">
-            <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-              Your Username <span className="text-slate-500 font-normal">(letters only)</span>
-            </label>
-            <input
-              type="text"
-              value={username}
-              onChange={(e) => {
-                const val = e.target.value.replace(/[^a-zA-Z]/g, '');
-                setUsername(val);
-                setErrorMessage(null);
-              }}
-              placeholder="e.g. Alex"
-              maxLength={20}
-              className="w-full px-4 py-3 bg-black/40 border border-white/10 focus:border-purple-500 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none transition-colors"
-            />
-            <p className="text-[10px] text-slate-500 mt-1">
-              Usernames are unique per room (case-insensitive).
-            </p>
-          </div>
-
-          {/* Action A: Create Room Button */}
-          <button
-            type="button"
-            onClick={handleCreateRoom}
-            disabled={isLoading || !isConnected}
-            className="w-full group relative flex items-center justify-center gap-2 py-3.5 px-6 rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-sm shadow-xl shadow-purple-600/30 transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50"
-          >
-            <Sparkles className="w-4 h-4 text-purple-200 group-hover:rotate-12 transition-transform" />
-            <span>Create New Room</span>
-          </button>
-
-          {/* Divider */}
-          <div className="relative my-7 flex items-center justify-center">
-            <div className="border-t border-white/10 w-full" />
-            <span className="bg-[#12141e] px-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wider absolute">
-              or join existing
+      <main className="mx-auto grid w-full max-w-[1380px] items-center gap-14 px-5 pb-20 pt-6 sm:px-8 lg:grid-cols-[1.02fr_0.98fr] lg:gap-10 lg:px-12 lg:pt-10">
+        {/* ------------------------------------------------------------ hero -- */}
+        <section className="animate-rise relative">
+          <div className="inline-flex items-center gap-2 rounded-full border border-violet-400/25 bg-violet-500/10 px-3 py-1.5 text-[11px] font-medium tracking-[0.18em] text-violet-200">
+            <span className="relative flex h-1.5 w-1.5">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-violet-400 opacity-75" />
+              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-violet-300" />
             </span>
+            REAL-TIME LISTENING ROOMS
           </div>
 
-          {/* Action B: Join Room Form */}
-          <form onSubmit={handleJoinRoom} className="space-y-4">
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                6-Digit Room Code
-              </label>
-              <input
-                type="text"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                maxLength={6}
-                value={roomCode}
-                onChange={(e) => {
-                  const numeric = e.target.value.replace(/\D/g, '');
-                  setRoomCode(numeric);
-                  setErrorMessage(null);
-                }}
-                placeholder="123456"
-                className="w-full px-4 py-3 bg-black/40 border border-white/10 focus:border-cyan-500 rounded-xl text-sm font-mono tracking-widest text-center text-white placeholder-slate-600 focus:outline-none transition-colors"
-              />
-              <p className="text-[10px] text-slate-500 mt-1 text-center">
-                If the room code doesn&apos;t exist yet, it will be automatically created with you as Admin!
-              </p>
-            </div>
+          <h1 className="font-display mt-6 text-[clamp(2.9rem,7.2vw,5.4rem)] font-bold leading-[0.94] tracking-[-0.045em]">
+            <span className="text-white">One Beat.</span>
+            <br />
+            <span className="text-gradient">Every Device.</span>
+          </h1>
 
-            <button
-              type="submit"
-              disabled={isLoading || !isConnected || roomCode.length !== 6}
-              className="w-full flex items-center justify-center gap-2 py-3 px-6 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/15 text-slate-200 hover:text-white font-semibold text-sm transition-all hover:border-cyan-500/50 disabled:opacity-40"
-            >
-              <span>Join Room</span>
-              <ArrowRight className="w-4 h-4 text-cyan-400" />
-            </button>
-          </form>
-        </div>
+          <p className="mt-6 max-w-lg text-[15px] leading-relaxed text-white/55 sm:text-base">
+            Create a room, drop a YouTube or Spotify link, and every speaker in the room
+            plays the exact same millisecond. No accounts. No downloads. No “you’re three
+            seconds behind”.
+          </p>
+
+          <div className="mt-8 grid max-w-lg grid-cols-2 gap-2.5 sm:grid-cols-3">
+            {[
+              { icon: Radio, label: 'Server-timed sync' },
+              { icon: Video, label: 'YouTube + Shorts' },
+              { icon: Music2, label: 'Spotify links' },
+              { icon: Users, label: 'Live presence' },
+              { icon: Zap, label: 'Instant rooms' },
+              { icon: ShieldCheck, label: 'Admin controls' },
+            ].map((feature) => (
+              <div
+                key={feature.label}
+                className="flex items-center gap-2 rounded-xl border border-white/[0.07] bg-white/[0.025] px-3 py-2.5"
+              >
+                <feature.icon className="h-3.5 w-3.5 flex-none text-violet-300" />
+                <span className="text-[11.5px] font-medium text-white/60">{feature.label}</span>
+              </div>
+            ))}
+          </div>
+
+          <NowPlayingPreview />
+        </section>
+
+        {/* ------------------------------------------------------------ form -- */}
+        <section className="animate-rise relative mx-auto w-full max-w-[480px] lg:mx-0" style={{ animationDelay: '120ms' }}>
+          <div className="absolute -inset-[1px] rounded-[30px] bg-gradient-to-b from-white/15 via-white/5 to-transparent opacity-60 blur-[1px]" />
+          <div className="panel relative rounded-[28px] p-1.5">
+            <div className="rounded-[23px] border border-white/[0.05] bg-[#0a0a11]/70 p-5 sm:p-7">
+              <div className="grid grid-cols-2 gap-1 rounded-2xl border border-white/[0.06] bg-black/30 p-1">
+                {(
+                  [
+                    { id: 'create', label: 'Create a room', icon: Sparkles },
+                    { id: 'join', label: 'Join a room', icon: ArrowRight },
+                  ] as const
+                ).map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => {
+                      setMode(tab.id);
+                      setError(null);
+                    }}
+                    className={cn(
+                      'flex items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-xs font-semibold transition-all',
+                      mode === tab.id
+                        ? 'bg-white/[0.08] text-white shadow-[0_1px_0_rgba(255,255,255,0.1)_inset]'
+                        : 'text-white/45 hover:text-white/75'
+                    )}
+                  >
+                    <tab.icon className="h-3.5 w-3.5" />
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              <form onSubmit={submit} className="mt-6 space-y-4">
+                {mode === 'join' && (
+                  <div>
+                    <label
+                      htmlFor="room-code"
+                      className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.18em] text-white/40"
+                    >
+                      Room code
+                    </label>
+                    <input
+                      id="room-code"
+                      value={code}
+                      onChange={(event) => setCode(event.target.value.replace(/\D/g, '').slice(0, 6))}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') submit(event);
+                      }}
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      placeholder="000000"
+                      className="field code-field h-16 border-white/15 bg-black/50 text-white placeholder:text-white/15"
+                      maxLength={6}
+                      aria-live="polite"
+                    />
+                  </div>
+                )}
+
+                <div>
+                  <label
+                    htmlFor="username"
+                    className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.18em] text-white/40"
+                  >
+                    Your name
+                  </label>
+                  <input
+                    id="username"
+                    value={username}
+                    onChange={(event) => {
+                      setUsername(event.target.value.replace(/[^A-Za-z]/g, '').slice(0, 20));
+                      setError(null);
+                    }}
+                    autoComplete="nickname"
+                    placeholder="e.g. Heman"
+                    className="field h-12"
+                    maxLength={20}
+                    autoFocus={mode === 'create'}
+                  />
+                  <p className="mt-2 flex items-center gap-1.5 text-[11px] text-white/30">
+                    <Lock className="h-3 w-3" />
+                    2–20 letters. Unique inside the room.
+                  </p>
+                </div>
+
+                {error && (
+                  <div className="rounded-xl border border-rose-400/25 bg-rose-500/10 px-3.5 py-2.5 text-xs text-rose-200">
+                    {error}
+                  </div>
+                )}
+
+                <button type="submit" disabled={busy} className="btn btn-primary h-12 w-full text-[13px]">
+                  {busy ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Opening room…
+                    </>
+                  ) : mode === 'create' ? (
+                    <>
+                      <Sparkles className="h-4 w-4" />
+                      Create room
+                      <ArrowRight className="h-4 w-4" />
+                    </>
+                  ) : (
+                    <>
+                      Join the room
+                      <ArrowRight className="h-4 w-4" />
+                    </>
+                  )}
+                </button>
+
+                <p className="text-center text-[11px] leading-relaxed text-white/32">
+                  {mode === 'create'
+                    ? 'You become the admin — control playback, queue, and settings.'
+                    : 'Joining a code that does not exist creates it instantly.'}
+                </p>
+              </form>
+
+              <div className="my-5 flex items-center gap-3">
+                <div className="h-px flex-1 bg-white/[0.07]" />
+                <span className="text-[10px] font-medium uppercase tracking-[0.22em] text-white/25">
+                  No sign-up
+                </span>
+                <div className="h-px flex-1 bg-white/[0.07]" />
+              </div>
+
+              <div className="flex items-center justify-center gap-4 text-[11px] text-white/32">
+                <span className="flex items-center gap-1.5">
+                  <ShieldCheck className="h-3.5 w-3.5 text-emerald-300/80" />
+                  Admin-gated
+                </span>
+                <span className="h-3 w-px bg-white/10" />
+                <span className="flex items-center gap-1.5">
+                  <Zap className="h-3.5 w-3.5 text-amber-300/80" />
+                  ~40ms drift
+                </span>
+                <span className="h-3 w-px bg-white/10" />
+                <span className="flex items-center gap-1.5">
+                  <Users className="h-3.5 w-3.5 text-cyan-300/80" />
+                  Up to 50
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 flex items-center justify-center gap-2 text-[11px] text-white/25">
+            <span className="h-1 w-1 rounded-full bg-white/25" />
+            Works with any speaker, browser, or phone in the room
+          </div>
+        </section>
       </main>
 
-      {/* Footer */}
-      <footer className="w-full max-w-5xl flex items-center justify-between text-[11px] text-slate-500 border-t border-white/5 pt-4 z-10">
-        <div>
-          <span>Vybe Synchronized Engine • Sub-100ms Phase-Locked Audio</span>
-        </div>
-        <div className="flex items-center gap-4">
-          <span className="flex items-center gap-1">
-            <Music className="w-3 h-3 text-purple-400" /> YouTube • Spotify • Web Audio
-          </span>
-        </div>
+      <footer className="mx-auto flex w-full max-w-[1380px] flex-col items-center justify-between gap-3 border-t border-white/[0.05] px-5 py-6 text-[11px] text-white/25 sm:flex-row sm:px-8 lg:px-12">
+        <p>One beat. Every device. Built for listening together.</p>
+        <p className="font-mono text-[10px] uppercase tracking-[0.2em]">Server-authoritative playback</p>
       </footer>
     </div>
   );
-};
+}
+
+function NowPlayingPreview() {
+  return (
+    <div className="relative mt-12 hidden max-w-lg sm:block">
+      <div className="absolute -left-6 top-6 h-40 w-40 rounded-full bg-violet-600/20 blur-3xl" />
+      <div className="glass relative flex items-center gap-4 rounded-2xl p-3.5 pr-5 shadow-[0_30px_80px_-40px_rgba(0,0,0,1)]">
+        <div className="relative h-16 w-16 flex-none overflow-hidden rounded-xl">
+          <img
+            src="https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=300&auto=format&fit=crop&q=80"
+            alt=""
+            className="h-full w-full object-cover"
+            loading="lazy"
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className="text-[9px] font-semibold uppercase tracking-[0.18em] text-emerald-300">
+              ● Now playing
+            </span>
+            <span className="text-[9px] uppercase tracking-[0.14em] text-white/25">Room 824193</span>
+          </div>
+          <p className="mt-1 truncate text-sm font-semibold text-white">Midnight Drive</p>
+          <p className="truncate text-[11px] text-white/40">Nova Waves · YouTube</p>
+        </div>
+        <div className="hidden w-28 flex-none sm:block">
+          <Waveform playing bars={24} className="h-8" />
+        </div>
+      </div>
+
+      <div className="mt-3 flex items-center justify-between px-1">
+        <div className="flex -space-x-2">
+          {['#8b5cf6', '#22d3ee', '#ec4899', '#34d399'].map((color, index) => (
+            <div
+              key={color}
+              className="grid h-7 w-7 place-items-center rounded-full border-2 border-[#06060a] text-[9px] font-bold text-white"
+              style={{ background: `linear-gradient(140deg, ${color}, ${color}88)` }}
+            >
+              {['H', 'M', 'A', 'J'][index]}
+            </div>
+          ))}
+          <div className="grid h-7 w-7 place-items-center rounded-full border-2 border-[#06060a] bg-white/10 text-[9px] font-semibold text-white/70">
+            +3
+          </div>
+        </div>
+        <span className="chip">
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+          7 devices in sync
+        </span>
+      </div>
+    </div>
+  );
+}
