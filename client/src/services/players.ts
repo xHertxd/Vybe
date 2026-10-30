@@ -345,7 +345,7 @@ export function createYouTubeAdapter(
           width: '100%',
           height: '100%',
           playerVars: {
-            autoplay: 0,
+            autoplay: 1,
             controls: 0,
             disablekb: 1,
             fs: 0,
@@ -358,6 +358,13 @@ export function createYouTubeAdapter(
           },
           events: {
             onReady: () => {
+              try {
+                const iframe = host.querySelector('iframe');
+                if (iframe) {
+                  iframe.setAttribute('allow', 'autoplay; encrypted-media; fullscreen; picture-in-picture');
+                  iframe.setAttribute('allowfullscreen', '1');
+                }
+              } catch {}
               if (adapter) {
                 adapter.markReady();
               }

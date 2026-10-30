@@ -156,7 +156,7 @@ export function MusicRoomPage({
       <header className="sticky top-0 z-40 border-b border-white/[0.08] bg-[#121214]/85 backdrop-blur-2xl">
         <div className="mx-auto flex h-16 w-full max-w-7xl items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
           <div className="flex min-w-0 items-center gap-3">
-            <Brand size="sm" />
+            <Brand size="sm" onClick={onLeave} />
             <div className="hidden h-5 w-px bg-white/10 sm:block" />
             <button
               type="button"
@@ -212,7 +212,21 @@ export function MusicRoomPage({
                       Host
                     </>
                   ) : (
-                    'Listener'
+                    <span className="flex items-center gap-1.5">
+                      <span>Listener</span>
+                      {(!room.users.some((u) => u.isAdmin && u.isOnline) || room.users.filter((u) => u.isOnline).length <= 1) && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            socket.emit('room:claim_admin', { roomCode: room.roomCode });
+                            notify('Host claimed', 'You are now the room host!', 'success');
+                          }}
+                          className="px-1.5 py-0.5 rounded bg-[#40E0D0]/20 hover:bg-[#40E0D0]/30 text-[#40E0D0] font-bold text-[8px] transition-all cursor-pointer"
+                        >
+                          Claim Host
+                        </button>
+                      )}
+                    </span>
                   )}
                 </p>
               </div>
@@ -271,6 +285,7 @@ export function MusicRoomPage({
               spotifyConfigured={spotify.configured}
               onConnectSpotify={connectSpotify}
               onOpenAdd={() => setAddOpen(true)}
+              notify={notify}
             />
           </div>
 

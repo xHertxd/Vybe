@@ -42,6 +42,7 @@ interface NowPlayingCardProps {
   spotifyConfigured: boolean;
   onConnectSpotify: () => void;
   onOpenAdd: () => void;
+  notify?: (title: string, description?: string, tone?: 'info' | 'success' | 'error') => void;
 }
 
 export function NowPlayingCard({
@@ -59,7 +60,17 @@ export function NowPlayingCard({
   spotifyConfigured,
   onConnectSpotify,
   onOpenAdd,
+  notify,
 }: NowPlayingCardProps) {
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const handleForceSync = () => {
+    setIsSyncing(true);
+    socket.emit('playback:force_sync', { roomCode: room.roomCode });
+    notify?.('Syncing devices', 'Resyncing all devices to the exact same millisecond...', 'info');
+    setTimeout(() => setIsSyncing(false), 1200);
+  };
+
   const [scrub, setScrub] = useState<number | null>(null);
   const track = room.playback.currentTrack;
   const isPlaying = room.playback.status === 'playing';
@@ -111,6 +122,18 @@ export function NowPlayingCard({
         </div>
 
         <div className="flex items-center gap-1.5">
+          {track && (
+            <button
+              type="button"
+              onClick={handleForceSync}
+              className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#40E0D0]/15 hover:bg-[#40E0D0]/25 text-[#40E0D0] border border-[#40E0D0]/30 text-[11px] font-semibold transition-all shadow-[0_0_12px_rgba(64,224,208,0.2)] active:scale-95 cursor-pointer"
+              title="Force synchronize all connected devices to the exact same millisecond"
+            >
+              <RotateCcw className={cn('h-3 w-3', isSyncing && 'animate-spin')} />
+              <span>{isSyncing ? 'Syncing...' : 'Sync All Devices'}</span>
+            </button>
+          )}
+
           {track && (
             <span
               className={cn(
@@ -164,7 +187,7 @@ export function NowPlayingCard({
             )}
 
             {track.provider === 'youtube' && youtubeMode === 'video' ? (
-              <div className="absolute inset-0 z-10" />
+              <div className="absolute inset-0 z-10 pointer-events-none" />
             ) : (
               <div className="absolute inset-0 flex items-center justify-center">
                 <div className="relative h-[62%] w-auto max-w-[62%]">

@@ -12,9 +12,29 @@ const STORAGE_KEY_PREFIX = 'vybe_virtual_room_';
 
 class VirtualRoomEngine {
   private activeRoomCode: string | null = null;
-  private currentUserId: string = 'usr_' + Math.random().toString(36).slice(2, 9);
+  private currentUserId: string = (() => {
+    try {
+      const saved = localStorage.getItem('vybe_persistent_user_id');
+      if (saved) return saved;
+      const created = 'usr_' + Math.random().toString(36).slice(2, 9);
+      localStorage.setItem('vybe_persistent_user_id', created);
+      return created;
+    } catch {
+      return 'usr_' + Math.random().toString(36).slice(2, 9);
+    }
+  })();
   private currentUsername: string = 'Listener';
-  private sessionToken: string = 'tok_' + Math.random().toString(36).slice(2, 11);
+  private sessionToken: string = (() => {
+    try {
+      const saved = localStorage.getItem('vybe_persistent_session_token');
+      if (saved) return saved;
+      const created = 'tok_' + Math.random().toString(36).slice(2, 11);
+      localStorage.setItem('vybe_persistent_session_token', created);
+      return created;
+    } catch {
+      return 'tok_' + Math.random().toString(36).slice(2, 11);
+    }
+  })();
   private channel: BroadcastChannel | null = null;
   private eventHandlers = new Map<string, Set<(...args: unknown[]) => void>>();
   private p2pRoom: Room | null = null;
@@ -633,6 +653,35 @@ class VirtualRoomEngine {
       return true;
     }
 
+    if (event === 'playback:force_sync') {
+      const roomCode = (payload.roomCode as string) || this.activeRoomCode;
+      if (!roomCode) return true;
+
+      const state = this.getStoredRoom(roomCode) || this.currentRoomState;
+      if (!state) return true;
+
+      const currentTrack = state.playback.currentTrack;
+      if (!currentTrack) return true;
+
+      const isPlaying = state.playback.status === 'playing';
+      const elapsed =
+        isPlaying && state.playback.scheduledStartTime && now >= state.playback.scheduledStartTime
+          ? (now - state.playback.scheduledStartTime) / 1000
+          : 0;
+      const position = Math.max(0, state.playback.position + elapsed);
+
+      state.playback.position = position;
+      state.playback.serverTimestamp = now;
+      state.playback.scheduledStartTime = isPlaying ? now + 600 : null;
+      state.version = now;
+      this.currentRoomState = state;
+      this.saveRoom(state);
+
+      this.emit('playback:sync', state.playback);
+      this.broadcast('sync_state', state);
+      return true;
+    }
+
     if (event === 'playback:next' || (event === 'playback:skip' && payload.direction === 'next')) {
       const roomCode = (payload.roomCode as string) || this.activeRoomCode;
       if (!roomCode) return true;
@@ -733,7 +782,25 @@ class VirtualRoomEngine {
       return true;
     }
 
-    if (event === 'room:make_admin') {
+        if (event === 'room:claim_admin') {
+      const roomCode = (payload.roomCode as string) || this.activeRoomCode;
+      if (!roomCode) return true;
+      const state = this.getStoredRoom(roomCode) || this.currentRoomState;
+      if (!state) return true;
+
+      state.adminId = this.currentUserId;
+      state.users.forEach((u) => {
+        u.isAdmin = u.id === this.currentUserId;
+      });
+      state.version = Date.now();
+      this.currentRoomState = state;
+      this.saveRoom(state);
+      this.emit('room:state', state);
+      this.broadcast('sync_state', state);
+      return true;
+    }
+
+if (event === 'room:make_admin') {
       const roomCode = (payload.roomCode as string) || this.activeRoomCode;
       const targetUserId = payload.targetUserId as string;
       if (!roomCode || !targetUserId) return true;

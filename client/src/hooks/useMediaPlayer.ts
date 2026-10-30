@@ -215,6 +215,18 @@ export function useMediaPlayer({
 
         if (playback.status === 'playing') {
           const isAlreadyPlaying = activeAdapter.isPlaying ? activeAdapter.isPlaying() : false;
+          const isYouTube = activeAdapter instanceof YouTubeAdapter;
+
+          // For YouTube: start directly to preserve user activation gesture without showing the YouTube play button!
+          if (isYouTube && !isAlreadyPlaying) {
+            if (target > 0.4) {
+              activeAdapter.seek(target);
+              lastSeekTime.current = Date.now();
+            }
+            activeAdapter.play();
+            setPhase('ready');
+            return;
+          }
 
           // If track changed or playback just started, honour scheduledStartTime
           if ((statusChanged || trackChanged || !isAlreadyPlaying) && wait > 40) {

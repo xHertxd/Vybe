@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { Pencil, Check, AlertCircle, ArrowRight, Shuffle, Loader2, Sparkles, Radio } from 'lucide-react';
+import { Pencil, Check, AlertCircle, ArrowRight, Shuffle, Loader2, Sparkles } from 'lucide-react';
 import { Footer } from '../components/Footer.js';
+import { Logo } from '../components/Logo.js';
 
 interface RoomEntryPageProps {
   onCreate: (username: string) => void;
@@ -212,18 +213,13 @@ export function RoomEntryPage({
       <div className="pointer-events-none absolute -bottom-40 -left-40 h-96 w-96 rounded-full bg-[#fde5b7]/10 blur-[140px]" />
       <div className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-[500px] w-[500px] rounded-full bg-white/[0.02] blur-[150px]" />
 
-      {/* Top Header - Liquid Glass Badge */}
+      {/* Top Header - Liquid Glass Badge with Logo */}
       <header className="w-full max-w-6xl mx-auto flex items-center justify-between z-20">
-        <div className="flex items-center gap-3 px-5 py-2.5 rounded-2xl bg-white/[0.04] backdrop-blur-2xl border border-white/[0.09] shadow-[0_8px_32px_rgba(0,0,0,0.4),inset_0_1px_0_0_rgba(255,255,255,0.15)]">
-          <div className="h-2.5 w-2.5 rounded-full bg-[#40E0D0] animate-pulse shadow-[0_0_8px_#40E0D0]" />
+        <div className="flex items-center gap-2.5 px-4 py-2 rounded-2xl bg-white/[0.04] backdrop-blur-2xl border border-white/[0.09] shadow-[0_8px_32px_rgba(0,0,0,0.4),inset_0_1px_0_0_rgba(255,255,255,0.15)]">
+          <Logo size={30} withBackground={true} />
           <span className="font-brand font-black text-2xl sm:text-3xl tracking-tight text-[#fde5b7]">
             VYBE
           </span>
-        </div>
-
-        <div className="hidden sm:flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/[0.03] backdrop-blur-xl border border-white/[0.06] text-[11px] text-[#a8a29e]">
-          <Radio className="w-3.5 h-3.5 text-[#40E0D0]" />
-          <span>Real-time Audio Sync</span>
         </div>
       </header>
 

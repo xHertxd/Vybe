@@ -151,8 +151,8 @@ export function AddMediaModal({ open, onClose, notify }: AddMediaModalProps) {
   };
 
   return (
-    <Modal open={open} onClose={onClose} className="max-w-2xl w-full p-0 overflow-hidden bg-[#212124] rounded-3xl border border-white/10 shadow-2xl" hideClose>
-      <div className="flex flex-col h-[600px] max-h-[85vh] bg-[#212124] text-[#fde5b7]">
+    <Modal open={open} onClose={onClose} className="max-w-2xl w-full p-0 overflow-hidden bg-[#141416] rounded-[32px] border border-white/[0.12] shadow-[0_25px_60px_rgba(0,0,0,0.8)]" hideClose>
+      <div className="flex flex-col h-[600px] max-h-[85vh] bg-[#141416] text-[#F5F5DC]">
         {/* Modal Header & Navigation */}
         <div className="p-5 pb-3 border-b border-white/5 space-y-4">
           <div className="flex items-center justify-between">
@@ -186,9 +186,7 @@ export function AddMediaModal({ open, onClose, notify }: AddMediaModalProps) {
               onClick={() => setTab('library')}
               className={cn(
                 'flex-1 py-2 px-3 rounded-lg flex items-center justify-center gap-2 transition-all',
-                tab === 'library'
-                  ? 'bg-[#262629] text-[#fde5b7] shadow-sm font-semibold'
-                  : 'text-[#a8a29e] hover:text-white'
+                tab === 'library' ? 'bg-[#fde5b7] text-black shadow-sm font-bold' : 'text-[#a8a29e] hover:text-white'
               )}
             >
               <Search className="w-3.5 h-3.5" />
@@ -199,9 +197,7 @@ export function AddMediaModal({ open, onClose, notify }: AddMediaModalProps) {
               onClick={() => setTab('link')}
               className={cn(
                 'flex-1 py-2 px-3 rounded-lg flex items-center justify-center gap-2 transition-all',
-                tab === 'link'
-                  ? 'bg-[#262629] text-[#fde5b7] shadow-sm font-semibold'
-                  : 'text-[#a8a29e] hover:text-white'
+                tab === 'link' ? 'bg-[#fde5b7] text-black shadow-sm font-bold' : 'text-[#a8a29e] hover:text-white'
               )}
             >
               <Link2 className="w-3.5 h-3.5" />
@@ -212,9 +208,7 @@ export function AddMediaModal({ open, onClose, notify }: AddMediaModalProps) {
               onClick={() => setTab('upload')}
               className={cn(
                 'flex-1 py-2 px-3 rounded-lg flex items-center justify-center gap-2 transition-all',
-                tab === 'upload'
-                  ? 'bg-[#262629] text-[#fde5b7] shadow-sm font-semibold'
-                  : 'text-[#a8a29e] hover:text-white'
+                tab === 'upload' ? 'bg-[#fde5b7] text-black shadow-sm font-bold' : 'text-[#a8a29e] hover:text-white'
               )}
             >
               <UploadCloud className="w-3.5 h-3.5" />
@@ -237,7 +231,7 @@ export function AddMediaModal({ open, onClose, notify }: AddMediaModalProps) {
                   value={searchQuery}
                   onChange={(e) => handleQueryChange(e.target.value)}
                   placeholder="Search by song name, artist, or album..."
-                  className="w-full pl-10 pr-10 py-3 rounded-xl bg-[#171719] border border-white/10 text-white placeholder:text-[#78716c] text-sm focus:outline-none focus:border-[#fde5b7]/50"
+                  className="w-full pl-10 pr-10 py-3 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder:text-[#a8a29e] text-sm focus:outline-none focus:border-[#40E0D0]/60 focus:bg-white/[0.06] transition-all"
                 />
                 {searchQuery && (
                   <button
@@ -285,7 +279,7 @@ export function AddMediaModal({ open, onClose, notify }: AddMediaModalProps) {
                   {searchResults.map((track, idx) => (
                     <div
                       key={track.mediaId || idx}
-                      className="group flex items-center justify-between p-2.5 rounded-xl bg-[#171719] hover:bg-[#262629] border border-white/5 hover:border-white/10 transition-all gap-3"
+                      className="group flex items-center justify-between p-2.5 rounded-2xl bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.07] hover:border-white/[0.12] transition-all gap-3"
                     >
                       <div className="flex items-center gap-3 min-w-0">
                         {track.thumbnail ? (

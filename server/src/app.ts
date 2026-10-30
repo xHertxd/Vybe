@@ -475,7 +475,18 @@ export function createVybeServer() {
       }
     });
 
-    socket.on('room:make_admin', (payload: { roomCode?: string; targetUserId?: string } = {}) => {
+        socket.on('room:claim_admin', (payload: { roomCode?: string } = {}) => {
+      try {
+        const session = requireSession(socket, payload.roomCode);
+        const newAdmin = roomManager.claimAdmin(session.roomCode, session.userId);
+        io.to(session.roomCode).emit('admin:changed', newAdmin);
+        io.to(session.roomCode).emit('room:state', roomManager.getState(session.roomCode));
+      } catch (error) {
+        emitError(socket, error);
+      }
+    });
+
+socket.on('room:make_admin', (payload: { roomCode?: string; targetUserId?: string } = {}) => {
       try {
         const session = requireSession(socket, payload.roomCode);
         if (!payload.targetUserId) return;
@@ -531,6 +542,15 @@ export function createVybeServer() {
       playbackAction(socket, payload, (session) => {
         roomManager.seek(session.roomCode, session.userId, Number(payload.position));
       });
+    });
+
+    socket.on('playback:force_sync', (payload = {}) => {
+      try {
+        const session = requireSession(socket, (payload as { roomCode?: string }).roomCode);
+        roomManager.forceSync(session.roomCode, session.userId);
+      } catch (error) {
+        emitError(socket, error);
+      }
     });
 
     socket.on('playback:next', (payload = {}) => {

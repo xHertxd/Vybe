@@ -415,6 +415,30 @@ export class RoomManager {
     return publicTarget;
   }
 
+  
+  public claimAdmin(roomCode: string, requesterUserId: string): RoomUser {
+    const room = this.rooms.get(roomCode);
+    if (!room) throw new RoomError('That room is no longer active.', 'NOT_FOUND');
+    const requester = room.state.users.find((u) => u.id === requesterUserId);
+    if (!requester) throw new RoomError('You are not in this room.', 'FORBIDDEN');
+
+    const currentAdmin = room.state.users.find((u) => u.id === room.state.adminId);
+    const canClaim = !currentAdmin || !currentAdmin.isOnline || room.state.users.filter(u => u.isOnline).length <= 1;
+    if (!canClaim) {
+      throw new RoomError('The current host is still in the room.', 'FORBIDDEN');
+    }
+
+    room.state.users.forEach((u) => {
+      u.isAdmin = u.id === requesterUserId;
+    });
+    room.state.adminId = requesterUserId;
+    room.state.version = Date.now();
+    this.publishRoom(roomCode);
+    const publicTarget = this.toPublicUser(requester);
+    this.hooks.adminChanged?.(roomCode, publicTarget);
+    return publicTarget;
+  }
+
   public kickUser(roomCode: string, requesterUserId: string, targetUserId: string): { remainingUsers: RoomUser[] } {
     const room = this.rooms.get(roomCode);
     if (!room) throw new RoomError('That room is no longer active.', 'NOT_FOUND');
@@ -559,6 +583,35 @@ export class RoomManager {
       1,
       Math.min(350, this.syncDelay())
     );
+    this.setPlayback(roomCode, playback);
+    return playback;
+  }
+
+  public forceSync(roomCode: string, userId?: string): PlaybackState {
+    const room = this.rooms.get(roomCode);
+    if (!room) throw new RoomError('That room is no longer active.', 'NOT_FOUND');
+    if (userId && !this.isMember(roomCode, userId)) {
+      throw new RoomError('You are not in this room.', 'FORBIDDEN');
+    }
+
+    const currentTrack = room.state.playback.currentTrack;
+    if (!currentTrack) return room.state.playback;
+
+    const now = Date.now();
+    const position = this.sync.positionAt(room.state.playback, now);
+    const isPlaying = room.state.playback.status === 'playing';
+
+    // Authoritative resync with 600ms scheduling delay so all devices hit the exact same millisecond
+    const playback: PlaybackState = {
+      status: isPlaying ? 'playing' : 'paused',
+      currentTrack,
+      position,
+      serverTimestamp: now,
+      scheduledStartTime: isPlaying ? now + 600 : null,
+      playbackRate: 1,
+      version: now,
+    };
+
     this.setPlayback(roomCode, playback);
     return playback;
   }
