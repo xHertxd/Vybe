@@ -69,6 +69,15 @@ export function useRoomSession({ notify, onEntered, onLeft }: UseRoomSessionOpti
     [onEntered]
   );
 
+  const joinTimeoutRef = useRef<number | null>(null);
+
+  const clearPendingTimeout = () => {
+    if (joinTimeoutRef.current) {
+      window.clearTimeout(joinTimeoutRef.current);
+      joinTimeoutRef.current = null;
+    }
+  };
+
   const createRoom = useCallback(
     (rawUsername: string) => {
       const username = rawUsername.trim();
@@ -80,12 +89,27 @@ export function useRoomSession({ notify, onEntered, onLeft }: UseRoomSessionOpti
         );
         return;
       }
+      clearPendingTimeout();
       if (!socket.connected) {
         socket.connect();
       }
       saveUsername(username);
       setPhase('connecting');
       socket.emit('room:create', { username });
+
+      joinTimeoutRef.current = window.setTimeout(() => {
+        setPhase((prev) => {
+          if (prev === 'connecting') {
+            notify(
+              'Connection timed out',
+              'Server is not responding. Please make sure the backend is running.',
+              'error'
+            );
+            return 'idle';
+          }
+          return prev;
+        });
+      }, 7000);
     },
     [notify]
   );
@@ -107,6 +131,7 @@ export function useRoomSession({ notify, onEntered, onLeft }: UseRoomSessionOpti
         );
         return;
       }
+      clearPendingTimeout();
       if (!socket.connected) {
         socket.connect();
       }
@@ -120,6 +145,20 @@ export function useRoomSession({ notify, onEntered, onLeft }: UseRoomSessionOpti
         userId: existing?.roomCode === roomCode ? existing.userId : undefined,
         sessionToken: existing?.roomCode === roomCode ? existing.sessionToken : undefined,
       });
+
+      joinTimeoutRef.current = window.setTimeout(() => {
+        setPhase((prev) => {
+          if (prev === 'connecting') {
+            notify(
+              'Connection timed out',
+              'Server is not responding. Please make sure the backend is running.',
+              'error'
+            );
+            return 'idle';
+          }
+          return prev;
+        });
+      }, 7000);
     },
     [notify]
   );
@@ -147,6 +186,13 @@ export function useRoomSession({ notify, onEntered, onLeft }: UseRoomSessionOpti
   useEffect(() => {
     clockSync.start();
 
+    if (socket.connected) {
+      setConnected(true);
+      setConnectionIssue(false);
+    } else {
+      socket.connect();
+    }
+
     const onConnect = () => {
       setConnectionIssue(false);
       setConnected(true);
@@ -169,16 +215,26 @@ export function useRoomSession({ notify, onEntered, onLeft }: UseRoomSessionOpti
     const onDisconnect = () => {
       setConnected(false);
       resumeInFlight.current = false;
-      if (inRoomRef.current || sessionRef.current) setPhase('reconnecting');
+      if (inRoomRef.current) {
+        setPhase('reconnecting');
+      } else {
+        setPhase('idle');
+      }
     };
 
     const onConnectError = () => {
+      clearPendingTimeout();
       setConnectionIssue(true);
       setConnected(false);
-      if (inRoomRef.current) setPhase('reconnecting');
+      if (inRoomRef.current) {
+        setPhase('reconnecting');
+      } else {
+        setPhase((previous) => (previous === 'connecting' ? 'idle' : previous));
+      }
     };
 
     const onCreated = (payload: CreatedPayload) => {
+      clearPendingTimeout();
       const username = getSavedUsername();
       resumeInFlight.current = false;
       enter(payload, username);
@@ -186,6 +242,7 @@ export function useRoomSession({ notify, onEntered, onLeft }: UseRoomSessionOpti
     };
 
     const onJoined = (payload: JoinedPayload) => {
+      clearPendingTimeout();
       const username =
         payload.state.users.find((user) => user.id === payload.user.id)?.username ||
         getSavedUsername();
@@ -295,6 +352,7 @@ export function useRoomSession({ notify, onEntered, onLeft }: UseRoomSessionOpti
     };
 
     const onError = (payload: { message?: string; code?: string }) => {
+      clearPendingTimeout();
       const message = payload?.message || 'Something went wrong.';
       const isResumeFailure =
         resumeInFlight.current &&

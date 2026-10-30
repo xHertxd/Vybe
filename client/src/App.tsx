@@ -56,7 +56,6 @@ export function App() {
     phase,
     room,
     currentUser,
-    session,
     connectionIssue,
     connected,
     createRoom,
@@ -99,11 +98,11 @@ export function App() {
     return () => window.removeEventListener('popstate', onPopState);
   }, [room]);
 
+  // If user is at root "/" without a routeCode, do not trap them on BootScreen
   const showBoot =
     !room &&
-    (session !== null ||
-      phase === 'reconnecting' ||
-      (phase === 'connecting' && !bootChecked));
+    Boolean(routeCode) &&
+    (phase === 'reconnecting' || (phase === 'connecting' && !bootChecked));
 
   return (
     <>

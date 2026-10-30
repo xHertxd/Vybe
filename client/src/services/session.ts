@@ -1,6 +1,6 @@
 import type { StoredSession } from '../types.js';
 
-const SESSION_KEY = 'vybe_session_v2';
+const SESSION_KEY = 'vybe_session';
 const USERNAME_KEY = 'vybe_username';
 const SPOTIFY_RETURN_KEY = 'vybe_spotify_return';
 

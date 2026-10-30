@@ -35,7 +35,7 @@ export function createVybeServer() {
   const app = express();
   const server = http.createServer(app);
 
-  const allowedOrigin = config.allowedOrigins || true;
+  const allowedOrigin = config.allowedOrigins || '*';
   const io = new SocketIOServer(server, {
     cors: {
       origin: allowedOrigin,
