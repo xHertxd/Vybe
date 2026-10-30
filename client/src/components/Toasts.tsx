@@ -10,21 +10,21 @@ interface ToastsProps {
 const toneStyles = {
   info: {
     icon: Info,
-    ring: 'border-cyan-300/25',
-    glow: 'shadow-[0_20px_50px_-24px_rgba(34,211,238,0.55)]',
-    iconColor: 'text-cyan-300',
+    ring: 'border-sand',
+    glow: 'shadow-[0_18px_40px_-28px_rgba(35,32,28,0.45)]',
+    iconColor: 'text-slate',
   },
   success: {
     icon: CheckCircle2,
-    ring: 'border-emerald-300/25',
-    glow: 'shadow-[0_20px_50px_-24px_rgba(52,211,153,0.55)]',
-    iconColor: 'text-emerald-300',
+    ring: 'border-forest/25',
+    glow: 'shadow-[0_18px_40px_-28px_rgba(95,114,89,0.5)]',
+    iconColor: 'text-forest',
   },
   error: {
     icon: AlertCircle,
-    ring: 'border-rose-400/30',
-    glow: 'shadow-[0_20px_50px_-24px_rgba(244,63,94,0.55)]',
-    iconColor: 'text-rose-300',
+    ring: 'border-rust/30',
+    glow: 'shadow-[0_18px_40px_-28px_rgba(162,90,69,0.5)]',
+    iconColor: 'text-rust',
   },
 } as const;
 
@@ -47,9 +47,9 @@ export function Toasts({ toasts, onDismiss }: ToastsProps) {
           >
             <Icon className={cn('mt-0.5 h-5 w-5 flex-none', tone.iconColor)} />
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold text-white">{toast.title}</p>
+              <p className="text-sm font-semibold text-ink">{toast.title}</p>
               {toast.description && (
-                <p className="mt-0.5 text-xs leading-relaxed text-white/55">{toast.description}</p>
+                <p className="mt-0.5 text-xs leading-relaxed text-slate">{toast.description}</p>
               )}
             </div>
             <button

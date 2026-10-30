@@ -89,20 +89,15 @@ export function NowPlayingCard({
   const ProviderIcon = providerIcon;
 
   return (
-    <section className="panel relative overflow-hidden rounded-[26px] p-3 sm:p-4 lg:p-5">
-      <div
-        className="pointer-events-none absolute -right-24 -top-24 h-64 w-64 rounded-full bg-violet-600/20 blur-[90px]"
-        aria-hidden="true"
-      />
-
+    <section className="panel relative overflow-hidden rounded-[22px] p-3 sm:p-4 lg:p-5">
       {/* ------------------------------------------------------------ header -- */}
       <div className="relative mb-3 flex items-center justify-between gap-3 px-1">
         <div className="flex items-center gap-2">
-          <span className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.22em] text-white/40">
+          <span className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.2em] text-taupe">
             <span
               className={cn(
                 'h-1.5 w-1.5 rounded-full',
-                isPlaying ? 'bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.9)]' : 'bg-white/25'
+                isPlaying ? 'bg-forest' : 'bg-clay'
               )}
             />
             Now playing
@@ -120,14 +115,11 @@ export function NowPlayingCard({
             <span
               className={cn(
                 'chip py-1 text-[10px]',
-                inSync ? 'border-emerald-300/20 text-emerald-200/80' : 'border-amber-300/25 text-amber-200/80'
+                inSync ? 'border-forest/25 text-forest' : 'border-rust/25 text-rust'
               )}
             >
               <span
-                className={cn(
-                  'h-1.5 w-1.5 rounded-full',
-                  inSync ? 'bg-emerald-400' : 'bg-amber-400'
-                )}
+                className={cn('h-1.5 w-1.5 rounded-full', inSync ? 'bg-forest' : 'bg-rust')}
               />
               {isPlaying ? (inSync ? 'In sync' : `${drift}ms drift`) : 'Paused'}
             </span>
@@ -147,7 +139,7 @@ export function NowPlayingCard({
       {/* ------------------------------------------------------------- stage -- */}
       <div
         className={cn(
-          'group relative overflow-hidden rounded-[20px] bg-black ring-1 ring-white/[0.06]',
+          'group relative overflow-hidden rounded-[16px] bg-ink ring-1 ring-sand',
           theater ? 'aspect-[16/8] sm:aspect-[16/7]' : 'aspect-[16/10] sm:aspect-[16/9]'
         )}
       >
@@ -156,10 +148,10 @@ export function NowPlayingCard({
             <img
               src={track.thumbnail}
               alt=""
-              className="absolute inset-0 h-full w-full scale-110 object-cover opacity-25 blur-2xl"
+              className="absolute inset-0 h-full w-full scale-110 object-cover opacity-20 blur-2xl"
               aria-hidden="true"
             />
-            <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-black/30 to-black/80" />
+            <div className="absolute inset-0 bg-gradient-to-b from-ink/40 via-ink/35 to-ink/85" />
 
             {track.provider === 'youtube' && (
               <div
@@ -176,26 +168,19 @@ export function NowPlayingCard({
             ) : (
               <div className="absolute inset-0 flex items-center justify-center">
                 <div className="relative h-[62%] w-auto max-w-[62%]">
-                  <div
-                    className="absolute -inset-6 rounded-full opacity-60 blur-3xl"
-                    style={{
-                      background:
-                        'radial-gradient(circle, rgba(139,92,246,0.55), rgba(34,211,238,0.2) 60%, transparent 75%)',
-                    }}
-                  />
                   <img
                     src={track.thumbnail}
                     alt={`${track.title} cover`}
                     className={cn(
-                      'relative h-full w-auto max-w-full rounded-2xl object-cover shadow-[0_30px_80px_-20px_rgba(0,0,0,0.9)] ring-1 ring-white/10',
+                      'relative h-full w-auto max-w-full rounded-xl object-cover shadow-[0_24px_60px_-24px_rgba(0,0,0,0.8)] ring-1 ring-cream/15',
                       track.provider === 'spotify' && 'rounded-full'
                     )}
                   />
                   {track.provider === 'spotify' && (
-                    <div className="pointer-events-none absolute inset-0 rounded-full ring-1 ring-inset ring-white/10">
-                      <div className="absolute inset-[18%] rounded-full border border-white/10" />
-                      <div className="absolute inset-[38%] grid place-items-center rounded-full bg-black/50 backdrop-blur-sm">
-                        <Music2 className="h-5 w-5 text-emerald-300" />
+                    <div className="pointer-events-none absolute inset-0 rounded-full ring-1 ring-inset ring-cream/15">
+                      <div className="absolute inset-[18%] rounded-full border border-cream/15" />
+                      <div className="absolute inset-[38%] grid place-items-center rounded-full bg-ink/50 backdrop-blur-sm">
+                        <Music2 className="h-5 w-5 text-cream" />
                       </div>
                     </div>
                   )}
@@ -204,29 +189,36 @@ export function NowPlayingCard({
             )}
 
             {/* corner meta */}
-            <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex items-end justify-between gap-3 bg-gradient-to-t from-black/80 via-black/20 to-transparent p-3 sm:p-4">
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex items-end justify-between gap-3 bg-gradient-to-t from-ink/85 via-ink/20 to-transparent p-3 sm:p-4">
               <div className="min-w-0">
-                <p className="text-[9px] font-semibold uppercase tracking-[0.22em] text-white/40">
+                <p className="text-[9px] font-medium uppercase tracking-[0.2em] text-cream/50">
                   {isPlaying ? 'Playing live' : 'Standing by'}
                 </p>
-                <p className="mt-0.5 line-clamp-1 text-xs font-medium text-white/75 sm:text-sm">
+                <p className="mt-0.5 line-clamp-1 text-xs font-medium text-cream/85 sm:text-sm">
                   {track.title}
                 </p>
               </div>
               <div className="hidden w-32 sm:block">
-                <Waveform playing={isPlaying} bars={28} className="h-7" />
+                <Waveform
+                  playing={isPlaying}
+                  bars={28}
+                  className="h-7"
+                  barClassName="bg-gradient-to-t from-cream/35 to-cream"
+                />
               </div>
             </div>
 
             {/* view mode toggle for YouTube */}
             {track.provider === 'youtube' && (
-              <div className="absolute right-3 top-3 z-20 flex rounded-lg border border-white/10 bg-black/55 p-0.5 backdrop-blur-md">
+              <div className="absolute right-3 top-3 z-20 flex rounded-lg border border-cream/15 bg-ink/60 p-0.5 backdrop-blur-md">
                 <button
                   type="button"
                   onClick={() => onYouTubeModeChange('video')}
                   className={cn(
-                    'flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-semibold transition-colors',
-                    youtubeMode === 'video' ? 'bg-white/15 text-white' : 'text-white/50 hover:text-white'
+                    'flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium transition-colors',
+                    youtubeMode === 'video'
+                      ? 'bg-cream/15 text-cream'
+                      : 'text-cream/50 hover:text-cream'
                   )}
                 >
                   <Video className="h-3 w-3" />
@@ -236,8 +228,10 @@ export function NowPlayingCard({
                   type="button"
                   onClick={() => onYouTubeModeChange('audio')}
                   className={cn(
-                    'flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-semibold transition-colors',
-                    youtubeMode === 'audio' ? 'bg-white/15 text-white' : 'text-white/50 hover:text-white'
+                    'flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium transition-colors',
+                    youtubeMode === 'audio'
+                      ? 'bg-cream/15 text-cream'
+                      : 'text-cream/50 hover:text-cream'
                   )}
                 >
                   <Radio className="h-3 w-3" />
@@ -248,28 +242,28 @@ export function NowPlayingCard({
 
             {/* player overlays */}
             {player.phase === 'loading' && (
-              <div className="absolute inset-0 z-30 grid place-items-center bg-black/55 backdrop-blur-sm">
-                <div className="flex flex-col items-center gap-2 text-xs text-white/60">
-                  <Loader2 className="h-5 w-5 animate-spin text-violet-300" />
+              <div className="absolute inset-0 z-30 grid place-items-center bg-ink/70 backdrop-blur-sm">
+                <div className="flex flex-col items-center gap-2 text-xs text-cream/70">
+                  <Loader2 className="h-5 w-5 animate-spin" />
                   Preparing the player…
                 </div>
               </div>
             )}
 
             {player.phase === 'needs-interaction' && (
-              <div className="absolute inset-0 z-30 grid place-items-center bg-black/65 p-6 backdrop-blur-md">
+              <div className="absolute inset-0 z-30 grid place-items-center bg-ink/75 p-6 backdrop-blur-md">
                 <div className="max-w-xs text-center">
-                  <div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-violet-500/20 ring-1 ring-violet-300/30">
-                    <Volume2 className="h-5 w-5 text-violet-200" />
+                  <div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl border border-cream/15 bg-cream/10">
+                    <Volume2 className="h-5 w-5 text-cream" />
                   </div>
-                  <p className="mt-3 text-sm font-semibold text-white">Your browser is waiting</p>
-                  <p className="mt-1 text-[11px] leading-relaxed text-white/45">
+                  <p className="mt-3 text-sm font-semibold text-cream">Your browser is waiting</p>
+                  <p className="mt-1 text-[11px] leading-relaxed text-cream/55">
                     Tap once to allow audio for this room. Sync is already running.
                   </p>
                   <button
                     type="button"
                     onClick={() => void player.activate()}
-                    className="btn btn-primary mt-4 h-9 px-4 text-xs"
+                    className="btn btn-primary mt-4 h-9 border-cream/20 bg-cream px-4 text-xs text-ink hover:bg-linen"
                   >
                     <Play className="h-3.5 w-3.5" />
                     Enable audio
@@ -279,13 +273,13 @@ export function NowPlayingCard({
             )}
 
             {player.phase === 'needs-spotify' && (
-              <div className="absolute inset-0 z-30 grid place-items-center bg-black/70 p-6 backdrop-blur-md">
+              <div className="absolute inset-0 z-30 grid place-items-center bg-ink/80 p-6 backdrop-blur-md">
                 <div className="max-w-sm text-center">
-                  <div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-emerald-500/15 ring-1 ring-emerald-300/25">
-                    <Music2 className="h-5 w-5 text-emerald-300" />
+                  <div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl border border-cream/15 bg-cream/10">
+                    <Music2 className="h-5 w-5 text-cream" />
                   </div>
-                  <p className="mt-3 text-sm font-semibold text-white">Spotify needs your account</p>
-                  <p className="mt-1 text-[11px] leading-relaxed text-white/45">
+                  <p className="mt-3 text-sm font-semibold text-cream">Spotify needs your account</p>
+                  <p className="mt-1 text-[11px] leading-relaxed text-cream/55">
                     Spotify does not stream through the room server. Each listener connects their own
                     Premium account — playback is still kept on the same beat.
                   </p>
@@ -293,12 +287,12 @@ export function NowPlayingCard({
                     <button
                       type="button"
                       onClick={onConnectSpotify}
-                      className="btn btn-primary mt-4 h-9 px-4 text-xs"
+                      className="btn btn-primary mt-4 h-9 border-cream/20 bg-cream px-4 text-xs text-ink hover:bg-linen"
                     >
                       Connect Spotify Premium
                     </button>
                   ) : (
-                    <p className="mt-3 rounded-lg border border-amber-300/20 bg-amber-400/10 px-3 py-2 text-[10px] text-amber-200/80">
+                    <p className="mt-3 rounded-lg border border-cream/15 bg-cream/10 px-3 py-2 text-[10px] text-cream/70">
                       Spotify is not configured on this deployment. Ask the host to add
                       VITE_SPOTIFY_CLIENT_ID.
                     </p>
@@ -307,7 +301,7 @@ export function NowPlayingCard({
                     href={track.url}
                     target="_blank"
                     rel="noreferrer"
-                    className="mt-3 inline-flex items-center gap-1 text-[10px] font-medium text-white/40 hover:text-white/70"
+                    className="mt-3 inline-flex items-center gap-1 text-[10px] font-medium text-cream/60 hover:text-cream"
                   >
                     Open in Spotify
                     <ExternalLink className="h-3 w-3" />
@@ -317,19 +311,19 @@ export function NowPlayingCard({
             )}
 
             {player.phase === 'error' && (
-              <div className="absolute inset-0 z-30 grid place-items-center bg-black/75 p-6 backdrop-blur-md">
+              <div className="absolute inset-0 z-30 grid place-items-center bg-ink/85 p-6 backdrop-blur-md">
                 <div className="max-w-sm text-center">
-                  <div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-rose-500/15 ring-1 ring-rose-300/25">
-                    <Music2 className="h-5 w-5 text-rose-300" />
+                  <div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl border border-rust/30 bg-rust/15">
+                    <Music2 className="h-5 w-5 text-rust" />
                   </div>
-                  <p className="mt-3 text-sm font-semibold text-white">This one cannot play here</p>
-                  <p className="mt-1 text-[11px] leading-relaxed text-white/45">{player.error}</p>
+                  <p className="mt-3 text-sm font-semibold text-cream">This one cannot play here</p>
+                  <p className="mt-1 text-[11px] leading-relaxed text-cream/55">{player.error}</p>
                   <div className="mt-4 flex items-center justify-center gap-2">
                     <a
                       href={track.url}
                       target="_blank"
                       rel="noreferrer"
-                      className="btn btn-ghost h-9 px-3 text-xs"
+                      className="btn h-9 border-cream/20 bg-transparent px-3 text-xs text-cream hover:bg-cream/10"
                     >
                       Open externally
                       <ExternalLink className="h-3 w-3" />
@@ -338,7 +332,7 @@ export function NowPlayingCard({
                       <button
                         type="button"
                         onClick={() => emit('playback:next')}
-                        className="btn btn-primary h-9 px-3 text-xs"
+                        className="btn btn-primary h-9 border-cream/20 bg-cream px-3 text-xs text-ink hover:bg-linen"
                       >
                         Skip track
                         <SkipForward className="h-3 w-3" />
@@ -350,20 +344,24 @@ export function NowPlayingCard({
             )}
           </>
         ) : (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-[radial-gradient(ellipse_at_center,rgba(139,92,246,0.14),transparent_65%)] p-6 text-center">
-            <div className="grid h-16 w-16 place-items-center rounded-2xl border border-white/10 bg-white/[0.03]">
-              <Music2 className="h-7 w-7 text-white/35" />
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-[radial-gradient(ellipse_at_center,rgba(191,180,161,0.14),transparent_65%)] p-6 text-center">
+            <div className="grid h-16 w-16 place-items-center rounded-2xl border border-cream/10 bg-cream/[0.04]">
+              <Music2 className="h-7 w-7 text-cream/40" />
             </div>
             <div>
-              <p className="font-display text-lg font-semibold text-white">The room is quiet</p>
-              <p className="mt-1 max-w-xs text-xs leading-relaxed text-white/40">
+              <p className="font-display text-lg font-semibold text-cream">The room is quiet</p>
+              <p className="mt-1 max-w-xs text-xs leading-relaxed text-cream/50">
                 {isAdmin
                   ? 'Add a YouTube, Spotify, or audio link and everyone will hear it together.'
                   : 'Waiting for the admin to queue the first track.'}
               </p>
             </div>
             {isAdmin && (
-              <button type="button" onClick={onOpenAdd} className="btn btn-primary mt-1 h-9 px-4 text-xs">
+              <button
+                type="button"
+                onClick={onOpenAdd}
+                className="btn btn-primary mt-1 h-9 border-cream/20 bg-cream px-4 text-xs text-ink hover:bg-linen"
+              >
                 <Sparkles className="h-3.5 w-3.5" />
                 Add the first track
               </button>
@@ -377,14 +375,14 @@ export function NowPlayingCard({
       {/* ------------------------------------------------------------- track -- */}
       <div className="mt-4 flex items-start justify-between gap-4 px-1">
         <div className="min-w-0">
-          <h2 className="font-display line-clamp-1 text-xl font-semibold tracking-[-0.02em] text-white sm:text-2xl">
+          <h2 className="font-display line-clamp-1 text-xl font-semibold tracking-[-0.015em] text-ink sm:text-2xl">
             {track?.title || 'Nothing playing yet'}
           </h2>
-          <p className="mt-1 line-clamp-1 text-[12.5px] text-white/45">
+          <p className="mt-1 line-clamp-1 text-[12.5px] text-taupe">
             {track ? (
               <>
                 {track.artist}
-                {track.album ? <span className="text-white/25"> · {track.album}</span> : null}
+                {track.album ? <span className="text-clay"> · {track.album}</span> : null}
               </>
             ) : (
               'Queue a track to light up the room'
@@ -399,8 +397,8 @@ export function NowPlayingCard({
             </span>
           )}
           {track && (
-            <span className="text-[10px] text-white/25">
-              queued by <span className="text-white/45">{track.addedBy}</span>
+            <span className="text-[10px] text-taupe">
+              queued by <span className="text-graphite">{track.addedBy}</span>
             </span>
           )}
         </div>
@@ -435,7 +433,7 @@ export function NowPlayingCard({
           style={{ ['--slider-progress' as string]: `${progress}%` }}
           aria-label="Seek"
         />
-        <div className="mt-1 flex items-center justify-between font-mono text-[10.5px] text-white/40">
+        <div className="mt-1 flex items-center justify-between font-mono text-[10.5px] text-taupe">
           <span>{formatTime(displayTime)}</span>
           <span>{duration > 0 ? formatTime(duration) : '--:--'}</span>
         </div>
@@ -450,14 +448,14 @@ export function NowPlayingCard({
             disabled={!isAdmin}
             className={cn(
               'icon-btn relative',
-              room.settings.isShuffle && 'bg-violet-500/15 text-violet-200'
+              room.settings.isShuffle && 'bg-linen text-ink'
             )}
             title="Shuffle (admin)"
             aria-label="Toggle shuffle"
           >
             <Shuffle className="h-4 w-4" />
             {room.settings.isShuffle && (
-              <span className="absolute bottom-1 h-0.5 w-2 rounded-full bg-violet-300" />
+              <span className="absolute bottom-1 h-0.5 w-2 rounded-full bg-ink" />
             )}
           </button>
           <button
@@ -477,15 +475,12 @@ export function NowPlayingCard({
           onClick={() => emit(isPlaying ? 'playback:pause' : 'playback:play')}
           disabled={!isAdmin || !track}
           className={cn(
-            'group relative grid h-14 w-14 place-items-center rounded-full text-white transition-all',
-            'bg-[linear-gradient(135deg,#8b5cf6,#6366f1_55%,#06b6d4)]',
-            'shadow-[0_12px_35px_-10px_rgba(124,58,237,0.9)] hover:shadow-[0_16px_45px_-8px_rgba(124,58,237,1)]',
-            'disabled:opacity-40 disabled:shadow-none'
+            'grid h-14 w-14 place-items-center rounded-full bg-ink text-cream transition-all',
+            'hover:bg-graphite disabled:opacity-40'
           )}
           title={isAdmin ? (isPlaying ? 'Pause' : 'Play') : 'Only the admin can control playback'}
           aria-label={isPlaying ? 'Pause' : 'Play'}
         >
-          <span className="absolute inset-0 rounded-full ring-1 ring-inset ring-white/25" />
           {isPlaying ? (
             <Pause className="h-5 w-5 fill-current" />
           ) : (
@@ -510,7 +505,7 @@ export function NowPlayingCard({
             disabled={!isAdmin}
             className={cn(
               'icon-btn relative',
-              room.settings.repeatMode !== 'off' && 'bg-violet-500/15 text-violet-200'
+              room.settings.repeatMode !== 'off' && 'bg-linen text-ink'
             )}
             title={`Repeat: ${room.settings.repeatMode} (admin)`}
             aria-label="Cycle repeat mode"
@@ -525,7 +520,7 @@ export function NowPlayingCard({
       </div>
 
       {/* ------------------------------------------------------------- utils -- */}
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/[0.055] bg-black/20 px-3 py-2">
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-sand bg-paper px-3 py-2">
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -546,15 +541,15 @@ export function NowPlayingCard({
             style={{ ['--slider-progress' as string]: `${Math.round(volume * 100)}%` }}
             aria-label="Local volume"
           />
-          <span className="hidden font-mono text-[10px] text-white/30 sm:inline">
+          <span className="hidden font-mono text-[10px] text-taupe sm:inline">
             {Math.round(volume * 100)}%
           </span>
         </div>
 
         <div className="flex items-center gap-2">
           {track?.provider === 'spotify' && spotifyConnected && (
-            <span className="chip border-emerald-300/20 py-1 text-[10px] text-emerald-200/80">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+            <span className="chip border-forest/25 py-1 text-[10px] text-forest">
+              <span className="h-1.5 w-1.5 rounded-full bg-forest" />
               Spotify connected
             </span>
           )}
@@ -570,11 +565,11 @@ export function NowPlayingCard({
               onClick={onOpenAdd}
               className="btn btn-ghost h-8 rounded-lg px-2.5 text-[11px]"
             >
-              <Sparkles className="h-3 w-3 text-violet-300" />
+              <Sparkles className="h-3 w-3" />
               Add
             </button>
           )}
-          <span className="hidden items-center gap-1 font-mono text-[10px] text-white/25 sm:flex">
+          <span className="hidden items-center gap-1 font-mono text-[10px] text-taupe sm:flex">
             <RotateCcw className="h-3 w-3" />
             {player.isReady ? `${Math.abs(player.driftMs)}ms` : 'syncing'}
           </span>
@@ -582,7 +577,7 @@ export function NowPlayingCard({
       </div>
 
       {!isAdmin && (
-        <p className="mt-3 flex items-center justify-center gap-1.5 text-center text-[10px] text-white/25">
+        <p className="mt-3 flex items-center justify-center gap-1.5 text-center text-[10px] text-taupe">
           <Lock className="h-3 w-3" />
           {currentUser.username}, you are listening. The admin controls playback.
         </p>

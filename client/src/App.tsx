@@ -148,26 +148,30 @@ function BootScreen({ phase, connectionIssue }: { phase: string; connectionIssue
       <div className="animate-rise flex w-full max-w-sm flex-col items-center text-center">
         <Brand size="lg" />
         <div className="panel mt-8 w-full rounded-3xl p-7">
-          <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl border border-violet-400/25 bg-violet-500/10">
+          <div
+            className={`mx-auto grid h-14 w-14 place-items-center rounded-2xl border ${
+              connectionIssue ? 'border-rust/25 bg-rust/5' : 'border-sand bg-linen'
+            }`}
+          >
             {connectionIssue ? (
-              <WifiOff className="h-6 w-6 text-amber-300" />
+              <WifiOff className="h-6 w-6 text-rust" />
             ) : (
-              <Loader2 className="h-6 w-6 animate-spin text-violet-300" />
+              <Loader2 className="h-6 w-6 animate-spin text-slate" />
             )}
           </div>
-          <p className="font-display mt-4 text-base font-semibold text-white">{message}</p>
-          <p className="mt-1.5 text-xs leading-relaxed text-white/40">
+          <p className="font-display mt-4 text-base font-semibold text-ink">{message}</p>
+          <p className="mt-1.5 text-xs leading-relaxed text-taupe">
             Server-authoritative playback is being re-aligned to your clock. This usually takes a
             second.
           </p>
           <div className="mt-5 flex items-center justify-center gap-1.5">
-            <span className="h-1 w-1 animate-pulse rounded-full bg-violet-400" />
+            <span className="animate-pulse-soft h-1 w-1 rounded-full bg-taupe" />
             <span
-              className="h-1 w-1 animate-pulse rounded-full bg-cyan-400"
+              className="animate-pulse-soft h-1 w-1 rounded-full bg-clay"
               style={{ animationDelay: '180ms' }}
             />
             <span
-              className="h-1 w-1 animate-pulse rounded-full bg-fuchsia-400"
+              className="animate-pulse-soft h-1 w-1 rounded-full bg-sand"
               style={{ animationDelay: '360ms' }}
             />
           </div>

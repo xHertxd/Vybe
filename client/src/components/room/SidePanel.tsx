@@ -6,10 +6,12 @@ import {
   Copy,
   Crown,
   ListMusic,
+  Music2,
   Plus,
   Radio,
   Trash2,
   Users,
+  Video,
   Wifi,
   WifiOff,
 } from 'lucide-react';
@@ -29,21 +31,21 @@ interface SidePanelProps {
 
 type Tab = 'queue' | 'people';
 
-const AVATAR_GRADIENTS = [
-  'from-violet-500 to-fuchsia-500',
-  'from-cyan-400 to-blue-500',
-  'from-pink-500 to-rose-500',
-  'from-emerald-400 to-teal-500',
-  'from-amber-400 to-orange-500',
-  'from-indigo-400 to-violet-500',
+const AVATAR_TONES = [
+  'bg-ink text-cream',
+  'bg-graphite text-cream',
+  'bg-slate text-cream',
+  'bg-taupe text-cream',
+  'bg-clay text-ink',
+  'bg-linen text-graphite',
 ];
 
-function avatarGradient(name: string): string {
+function avatarTone(name: string): string {
   let hash = 0;
   for (let index = 0; index < name.length; index += 1) {
     hash = (hash + name.charCodeAt(index) * (index + 3)) % 997;
   }
-  return AVATAR_GRADIENTS[hash % AVATAR_GRADIENTS.length];
+  return AVATAR_TONES[hash % AVATAR_TONES.length];
 }
 
 export function SidePanel({
@@ -85,32 +87,32 @@ export function SidePanel({
   });
 
   return (
-    <aside className="panel flex min-h-0 flex-col overflow-hidden rounded-[26px]">
-      <div className="flex items-center justify-between gap-2 border-b border-white/[0.06] px-4 py-3">
-        <div className="grid flex-1 grid-cols-2 gap-1 rounded-xl border border-white/[0.06] bg-black/30 p-1">
+    <aside className="panel flex min-h-0 flex-col overflow-hidden rounded-[22px]">
+      <div className="flex items-center justify-between gap-2 border-b border-sand px-3 py-3">
+        <div className="grid flex-1 grid-cols-2 gap-1 rounded-lg border border-sand bg-paper p-1">
           <button
             type="button"
             onClick={() => setTab('queue')}
             className={cn(
-              'flex items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-[11px] font-semibold transition-colors',
-              tab === 'queue' ? 'bg-white/[0.08] text-white' : 'text-white/45 hover:text-white/70'
+              'flex items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-medium transition-colors',
+              tab === 'queue' ? 'bg-cream text-ink shadow-[0_1px_2px_rgba(35,32,28,0.06)]' : 'text-taupe hover:text-graphite'
             )}
           >
             <ListMusic className="h-3.5 w-3.5" />
             Queue
-            <span className="font-mono text-[10px] text-white/35">{room.queue.length}</span>
+            <span className="font-mono text-[10px] text-taupe">{room.queue.length}</span>
           </button>
           <button
             type="button"
             onClick={() => setTab('people')}
             className={cn(
-              'flex items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-[11px] font-semibold transition-colors',
-              tab === 'people' ? 'bg-white/[0.08] text-white' : 'text-white/45 hover:text-white/70'
+              'flex items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-medium transition-colors',
+              tab === 'people' ? 'bg-cream text-ink shadow-[0_1px_2px_rgba(35,32,28,0.06)]' : 'text-taupe hover:text-graphite'
             )}
           >
             <Users className="h-3.5 w-3.5" />
             People
-            <span className="font-mono text-[10px] text-white/35">
+            <span className="font-mono text-[10px] text-taupe">
               {room.users.filter((user) => user.isOnline).length}
             </span>
           </button>
@@ -132,13 +134,13 @@ export function SidePanel({
           <div className="min-h-0 flex-1 overflow-y-auto p-2 scroll-thin">
             {room.queue.length === 0 ? (
               <div className="flex h-full min-h-[280px] flex-col items-center justify-center px-6 text-center">
-                <div className="grid h-12 w-12 place-items-center rounded-2xl border border-white/10 bg-white/[0.03]">
-                  <ListMusic className="h-5 w-5 text-white/30" />
+                <div className="grid h-12 w-12 place-items-center rounded-xl border border-sand bg-paper">
+                  <ListMusic className="h-5 w-5 text-clay" />
                 </div>
-                <p className="mt-3 text-sm font-semibold text-white/80">Queue is empty</p>
-                <p className="mt-1 text-[11px] leading-relaxed text-white/35">
+                <p className="mt-3 text-sm font-medium text-graphite">Queue is empty</p>
+                <p className="mt-1 text-[11px] leading-relaxed text-taupe">
                   {isAdmin
-                    ? 'Add links, playlists, or files to start the session.'
+                    ? 'Add a real link or upload a file to start the session.'
                     : 'The admin will add the first track soon.'}
                 </p>
                 {isAdmin && (
@@ -153,15 +155,15 @@ export function SidePanel({
                 {room.queue.map((item, index) => {
                   const active = index === room.currentIndex;
                   const ProviderIcon =
-                    item.provider === 'youtube' ? Radio : item.provider === 'spotify' ? Radio : Radio;
+                    item.provider === 'youtube' ? Video : item.provider === 'spotify' ? Music2 : Radio;
                   return (
                     <li key={item.id}>
                       <div
                         className={cn(
-                          'group relative flex items-center gap-2.5 rounded-xl border p-1.5 pr-2 transition-colors',
+                          'group relative flex items-center gap-2.5 rounded-lg border p-1.5 pr-2 transition-colors',
                           active
-                            ? 'border-violet-400/25 bg-violet-500/[0.08]'
-                            : 'border-transparent hover:border-white/[0.06] hover:bg-white/[0.03]'
+                            ? 'border-clay bg-linen/60'
+                            : 'border-transparent hover:border-sand hover:bg-paper'
                         )}
                       >
                         <button
@@ -173,13 +175,13 @@ export function SidePanel({
                             }
                             socket.emit('queue:play_index', { roomCode: room.roomCode, index });
                           }}
-                          className="relative h-10 w-10 flex-none overflow-hidden rounded-lg"
+                          className="relative h-10 w-10 flex-none overflow-hidden rounded-md bg-linen"
                           title={isAdmin ? `Play ${item.title}` : item.title}
                         >
                           <img src={item.thumbnail} alt="" className="h-full w-full object-cover" loading="lazy" />
                           <span
                             className={cn(
-                              'absolute inset-0 grid place-items-center bg-black/45 transition-opacity',
+                              'absolute inset-0 grid place-items-center bg-ink/50 transition-opacity',
                               active ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
                             )}
                           >
@@ -188,7 +190,7 @@ export function SidePanel({
                                 {[0, 1, 2].map((bar) => (
                                   <span
                                     key={bar}
-                                    className="eq-bar w-[2px] rounded-full bg-white"
+                                    className="eq-bar w-[2px] rounded-full bg-cream"
                                     style={{
                                       height: `${7 + bar * 3}px`,
                                       animationDelay: `${bar * 120}ms`,
@@ -198,7 +200,7 @@ export function SidePanel({
                                 ))}
                               </span>
                             ) : (
-                              <span className="font-mono text-[10px] text-white/80">
+                              <span className="font-mono text-[10px] text-cream/90">
                                 {String(index + 1).padStart(2, '0')}
                               </span>
                             )}
@@ -209,23 +211,23 @@ export function SidePanel({
                           <p
                             className={cn(
                               'line-clamp-1 text-[12px] font-medium',
-                              active ? 'text-white' : 'text-white/80'
+                              active ? 'text-ink' : 'text-graphite'
                             )}
                           >
                             {item.title}
                           </p>
-                          <p className="line-clamp-1 text-[10.5px] text-white/35">
+                          <p className="line-clamp-1 text-[10.5px] text-taupe">
                             <ProviderIcon className="mr-1 inline h-2.5 w-2.5 align-[-1px]" />
                             {item.artist}
                           </p>
                         </div>
 
-                        <span className="flex-none font-mono text-[10px] text-white/30">
+                        <span className="flex-none font-mono text-[10px] text-taupe">
                           {item.duration > 0 ? formatTime(item.duration) : '--:--'}
                         </span>
 
                         {isAdmin && (
-                          <div className="absolute right-1 top-1/2 hidden -translate-y-1/2 items-center gap-0.5 rounded-lg border border-white/10 bg-[#0b0b12]/95 p-0.5 shadow-lg group-hover:flex">
+                          <div className="absolute right-1 top-1/2 hidden -translate-y-1/2 items-center gap-0.5 rounded-md border border-sand bg-cream p-0.5 shadow-sm group-hover:flex">
                             <button
                               type="button"
                               onClick={() => socket.emit('queue:reorder', { roomCode: room.roomCode, fromIndex: index, toIndex: index - 1 })}
@@ -249,7 +251,7 @@ export function SidePanel({
                             <button
                               type="button"
                               onClick={() => socket.emit('queue:remove', { roomCode: room.roomCode, itemId: item.id })}
-                              className="icon-btn h-5 w-5 rounded hover:text-rose-300"
+                              className="icon-btn h-5 w-5 rounded hover:text-rust"
                               title="Remove"
                               aria-label="Remove from queue"
                             >
@@ -265,8 +267,8 @@ export function SidePanel({
             )}
           </div>
 
-          <div className="border-t border-white/[0.06] px-4 py-3">
-            <div className="flex items-center justify-between text-[10px] text-white/35">
+          <div className="border-t border-sand px-4 py-3">
+            <div className="flex items-center justify-between text-[10px] text-taupe">
               <span>
                 {room.queue.length} {room.queue.length === 1 ? 'track' : 'tracks'}
                 {totalDuration > 0 ? ` · ${formatTime(totalDuration)}` : ''}
@@ -275,46 +277,46 @@ export function SidePanel({
                 <button
                   type="button"
                   onClick={onRequestClear}
-                  className="flex items-center gap-1 text-[10px] font-medium text-rose-300/70 transition-colors hover:text-rose-300"
+                  className="flex items-center gap-1 text-[10px] font-medium text-rust/80 transition-colors hover:text-rust"
                 >
                   <Trash2 className="h-3 w-3" />
                   Clear
                 </button>
               )}
             </div>
-            <p className="mt-1.5 text-[9.5px] leading-relaxed text-white/22">
+            <p className="mt-1.5 text-[9.5px] leading-relaxed text-clay">
               {isAdmin ? 'Click a track to jump to it. Hover for reorder controls.' : 'Only the admin can change this queue.'}
             </p>
           </div>
         </>
       ) : (
         <div className="min-h-0 flex-1 overflow-y-auto p-3 scroll-thin">
-          <div className="rounded-2xl border border-violet-400/20 bg-gradient-to-br from-violet-500/[0.12] to-cyan-500/[0.06] p-3.5">
-            <p className="text-[9px] font-semibold uppercase tracking-[0.2em] text-violet-200/60">
+          <div className="rounded-xl border border-sand bg-paper p-3.5">
+            <p className="text-[9px] font-medium uppercase tracking-[0.2em] text-taupe">
               Room code
             </p>
             <div className="mt-1.5 flex items-center justify-between gap-2">
-              <span className="font-mono text-2xl font-semibold tracking-[0.18em] text-white">
+              <span className="font-mono text-2xl font-semibold tracking-[0.18em] text-ink">
                 {room.roomCode}
               </span>
               <button type="button" onClick={() => void copyCode()} className="icon-btn h-8 w-8" title="Copy code">
-                {copied ? <Check className="h-4 w-4 text-emerald-300" /> : <Copy className="h-4 w-4" />}
+                {copied ? <Check className="h-4 w-4 text-forest" /> : <Copy className="h-4 w-4" />}
               </button>
             </div>
             <button
               type="button"
               onClick={() => void copyLink()}
-              className="mt-2 w-full rounded-lg border border-white/10 bg-white/[0.04] py-1.5 text-[10px] font-medium text-white/60 transition-colors hover:bg-white/[0.08] hover:text-white"
+              className="mt-2 w-full rounded-lg border border-sand bg-cream py-1.5 text-[10px] font-medium text-slate transition-colors hover:bg-linen hover:text-ink"
             >
               Copy invite link
             </button>
           </div>
 
           <div className="mt-3 flex items-center justify-between px-1">
-            <span className="text-[9px] font-semibold uppercase tracking-[0.2em] text-white/35">
+            <span className="text-[9px] font-medium uppercase tracking-[0.2em] text-taupe">
               In the room
             </span>
-            <span className="font-mono text-[9px] text-white/25">
+            <span className="font-mono text-[9px] text-clay">
               {room.users.filter((user) => user.isOnline).length}/{room.users.length}
             </span>
           </div>
@@ -326,17 +328,15 @@ export function SidePanel({
                 <li
                   key={user.id}
                   className={cn(
-                    'flex items-center gap-2.5 rounded-xl border px-2 py-2',
-                    isYou
-                      ? 'border-white/[0.09] bg-white/[0.04]'
-                      : 'border-transparent hover:bg-white/[0.025]'
+                    'flex items-center gap-2.5 rounded-lg border px-2 py-2',
+                    isYou ? 'border-sand bg-paper' : 'border-transparent hover:bg-paper/70'
                   )}
                 >
                   <div className="relative">
                     <div
                       className={cn(
-                        'grid h-8 w-8 place-items-center rounded-full bg-gradient-to-br text-[10px] font-bold text-white',
-                        avatarGradient(user.username),
+                        'grid h-8 w-8 place-items-center rounded-full text-[10px] font-semibold',
+                        avatarTone(user.username),
                         !user.isOnline && 'opacity-40 grayscale'
                       )}
                     >
@@ -344,24 +344,24 @@ export function SidePanel({
                     </div>
                     <span
                       className={cn(
-                        'absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-[#0d0d15]',
-                        user.isOnline ? 'bg-emerald-400' : 'bg-white/25'
+                        'absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-cream',
+                        user.isOnline ? 'bg-forest' : 'bg-clay'
                       )}
                     />
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5">
-                      <p className="truncate text-[12px] font-medium text-white/85">{user.username}</p>
-                      {isYou && <span className="text-[9px] text-white/30">You</span>}
-                      {user.isAdmin && <Crown className="h-3 w-3 text-amber-300" />}
+                      <p className="truncate text-[12px] font-medium text-graphite">{user.username}</p>
+                      {isYou && <span className="text-[9px] text-taupe">You</span>}
+                      {user.isAdmin && <Crown className="h-3 w-3 text-taupe" />}
                     </div>
-                    <p className="flex items-center gap-1 text-[9.5px] text-white/30">
+                    <p className="flex items-center gap-1 text-[9.5px] text-taupe">
                       {user.isOnline ? (
                         <>
-                          <Wifi className="h-2.5 w-2.5 text-emerald-300/70" />
+                          <Wifi className="h-2.5 w-2.5 text-forest/80" />
                           {user.ping > 0 ? `${Math.round(user.ping)}ms` : 'online'}
-                          <span className="text-white/15">·</span>
-                          <span className={Math.abs(user.drift) < 120 ? 'text-emerald-300/60' : 'text-amber-300/60'}>
+                          <span className="text-sand">·</span>
+                          <span className={Math.abs(user.drift) < 120 ? 'text-forest/80' : 'text-rust/80'}>
                             {Math.round(user.drift)}ms drift
                           </span>
                         </>
@@ -374,7 +374,7 @@ export function SidePanel({
                     </p>
                   </div>
                   {user.isAdmin && (
-                    <span className="chip border-amber-300/20 py-0.5 text-[8px] uppercase tracking-wider text-amber-200/70">
+                    <span className="chip py-0.5 text-[8px] uppercase tracking-wider text-taupe">
                       Admin
                     </span>
                   )}
@@ -383,9 +383,9 @@ export function SidePanel({
             })}
           </ul>
 
-          <div className="mt-4 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3">
-            <p className="text-[10px] font-semibold text-white/55">Seats survive refresh</p>
-            <p className="mt-1 text-[9.5px] leading-relaxed text-white/30">
+          <div className="mt-4 rounded-lg border border-sand bg-paper p-3">
+            <p className="text-[10px] font-medium text-slate">Seats survive refresh</p>
+            <p className="mt-1 text-[9.5px] leading-relaxed text-taupe">
               A dropped listener keeps their name for 25 seconds. A deliberate leave frees it
               immediately.
             </p>

@@ -6,7 +6,6 @@ import {
   Music2,
   Plus,
   Radio,
-  Sparkles,
   UploadCloud,
   Video,
 } from 'lucide-react';
@@ -22,7 +21,7 @@ interface AddMediaModalProps {
   notify: (title: string, description?: string, tone?: 'info' | 'success' | 'error') => void;
 }
 
-type Tab = 'link' | 'upload' | 'presets';
+type Tab = 'link' | 'upload';
 
 const AUDIO_RE = /\.(mp3|wav|ogg|oga|aac|m4a|flac|opus|webm)(\?.*)?$/i;
 
@@ -54,33 +53,10 @@ export function AddMediaModal({ open, onClose, notify }: AddMediaModalProps) {
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploaded, setUploaded] = useState<MediaItemInput | null>(null);
-  const [presets, setPresets] = useState<MediaItemInput[] | null>(null);
   const [dragging, setDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const detected = detectProvider(url);
-
-  useEffect(() => {
-    if (!open) return;
-    setError(null);
-    if (tab !== 'presets' || presets) return;
-
-    let cancelled = false;
-    fetch(getApiUrl('/api/presets'))
-      .then((response) => response.json())
-      .then((data: { success?: boolean; presets?: MediaItemInput[] }) => {
-        if (!cancelled && data.success && Array.isArray(data.presets)) {
-          setPresets(data.presets);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setError('Could not load the starter tracks.');
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [open, tab, presets]);
 
   useEffect(() => {
     if (!open) {
@@ -174,15 +150,14 @@ export function AddMediaModal({ open, onClose, notify }: AddMediaModalProps) {
       open={open}
       onClose={onClose}
       title="Add to the queue"
-      description="YouTube videos, Shorts, playlists, Spotify links, direct audio, or an upload."
+      description="YouTube videos, Shorts, playlists, Spotify links, direct audio, or a file upload."
       className="max-w-xl"
     >
-      <div className="grid grid-cols-3 gap-1 rounded-2xl border border-white/[0.06] bg-black/30 p-1">
+      <div className="grid grid-cols-2 gap-1 rounded-xl border border-sand bg-paper p-1">
         {(
           [
             { id: 'link', label: 'Link', icon: Link2 },
             { id: 'upload', label: 'Upload', icon: UploadCloud },
-            { id: 'presets', label: 'Starter', icon: Sparkles },
           ] as const
         ).map((item) => (
           <button
@@ -193,10 +168,10 @@ export function AddMediaModal({ open, onClose, notify }: AddMediaModalProps) {
               setError(null);
             }}
             className={cn(
-              'flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold transition-all',
+              'flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-medium transition-colors',
               tab === item.id
-                ? 'bg-white/[0.08] text-white'
-                : 'text-white/45 hover:text-white/75'
+                ? 'bg-cream text-ink shadow-[0_1px_2px_rgba(35,32,28,0.08)]'
+                : 'text-taupe hover:text-graphite'
             )}
           >
             <item.icon className="h-3.5 w-3.5" />
@@ -210,7 +185,7 @@ export function AddMediaModal({ open, onClose, notify }: AddMediaModalProps) {
           <div className="space-y-4">
             <div>
               <div className="flex items-center justify-between">
-                <label htmlFor="media-url" className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/40">
+                <label htmlFor="media-url" className="text-[10px] font-medium uppercase tracking-[0.18em] text-taupe">
                   Media link
                 </label>
                 {detected !== 'unknown' && (
@@ -250,7 +225,7 @@ export function AddMediaModal({ open, onClose, notify }: AddMediaModalProps) {
             </div>
 
             {error && (
-              <div className="rounded-xl border border-rose-400/25 bg-rose-500/10 px-3.5 py-2.5 text-xs text-rose-200">
+              <div className="rounded-xl border border-rust/25 bg-rust/5 px-3.5 py-2.5 text-xs text-rust">
                 {error}
               </div>
             )}
@@ -270,6 +245,11 @@ export function AddMediaModal({ open, onClose, notify }: AddMediaModalProps) {
                   : 'Add to queue'
                 : 'Fetch a link to continue'}
             </button>
+
+            <p className="text-center text-[10px] leading-relaxed text-taupe">
+              Only real links are queued. YouTube requires the official IFrame player; Spotify
+              playback needs a personal Premium account.
+            </p>
           </div>
         )}
 
@@ -300,41 +280,41 @@ export function AddMediaModal({ open, onClose, notify }: AddMediaModalProps) {
                 if (file) void uploadFile(file);
               }}
               className={cn(
-                'flex w-full flex-col items-center justify-center gap-3 rounded-2xl border border-dashed px-6 py-10 transition-colors',
+                'flex w-full flex-col items-center justify-center gap-3 rounded-xl border border-dashed px-6 py-10 transition-colors',
                 dragging
-                  ? 'border-violet-400/60 bg-violet-500/10'
-                  : 'border-white/12 bg-white/[0.02] hover:border-white/25 hover:bg-white/[0.04]'
+                  ? 'border-taupe bg-linen'
+                  : 'border-sand bg-paper hover:border-clay hover:bg-linen/60'
               )}
             >
               {uploading ? (
-                <Loader2 className="h-7 w-7 animate-spin text-violet-300" />
+                <Loader2 className="h-7 w-7 animate-spin text-taupe" />
               ) : (
-                <UploadCloud className="h-7 w-7 text-violet-300" />
+                <UploadCloud className="h-7 w-7 text-taupe" />
               )}
               <div className="text-center">
-                <p className="text-sm font-semibold text-white">
+                <p className="text-sm font-medium text-ink">
                   {uploading ? 'Uploading…' : 'Drop an audio file or click to browse'}
                 </p>
-                <p className="mt-1 text-[11px] text-white/35">MP3, WAV, OGG, M4A, FLAC · up to 30 MB</p>
+                <p className="mt-1 text-[11px] text-taupe">MP3, WAV, OGG, M4A, FLAC · up to 30 MB</p>
               </div>
             </button>
 
             {error && (
-              <div className="rounded-xl border border-rose-400/25 bg-rose-500/10 px-3.5 py-2.5 text-xs text-rose-200">
+              <div className="rounded-xl border border-rust/25 bg-rust/5 px-3.5 py-2.5 text-xs text-rust">
                 {error}
               </div>
             )}
 
             {uploaded && (
-              <div className="flex items-center gap-3 rounded-2xl border border-white/[0.08] bg-white/[0.03] p-3">
-                <div className="grid h-12 w-12 flex-none place-items-center rounded-xl bg-gradient-to-br from-violet-500/30 to-cyan-500/20">
-                  <Music2 className="h-5 w-5 text-white/80" />
+              <div className="flex items-center gap-3 rounded-xl border border-sand bg-paper p-3">
+                <div className="grid h-12 w-12 flex-none place-items-center rounded-lg bg-linen">
+                  <Music2 className="h-5 w-5 text-graphite" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold text-white">{uploaded.title}</p>
-                  <p className="text-[11px] text-white/40">Ready to queue</p>
+                  <p className="truncate text-sm font-medium text-ink">{uploaded.title}</p>
+                  <p className="text-[11px] text-taupe">Ready to queue</p>
                 </div>
-                <Check className="h-4 w-4 text-emerald-300" />
+                <Check className="h-4 w-4 text-forest" />
               </div>
             )}
 
@@ -348,48 +328,10 @@ export function AddMediaModal({ open, onClose, notify }: AddMediaModalProps) {
               Add uploaded file
             </button>
 
-            <p className="text-center text-[10px] leading-relaxed text-white/25">
+            <p className="text-center text-[10px] leading-relaxed text-taupe">
               Uploads live on the server instance. On serverless hosting they are temporary, so
               prefer links for permanent rooms.
             </p>
-          </div>
-        )}
-
-        {tab === 'presets' && (
-          <div className="space-y-3">
-            {!presets && !error && (
-              <div className="flex items-center justify-center gap-2 py-10 text-xs text-white/40">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Loading starters…
-              </div>
-            )}
-            {error && (
-              <div className="rounded-xl border border-rose-400/25 bg-rose-500/10 px-3.5 py-2.5 text-xs text-rose-200">
-                {error}
-              </div>
-            )}
-            {presets?.map((preset) => {
-              const Icon = providerIcon(preset.provider);
-              return (
-                <button
-                  key={preset.mediaId}
-                  type="button"
-                  onClick={() => addItems([preset], preset.title)}
-                  className="group flex w-full items-center gap-3 rounded-2xl border border-white/[0.07] bg-white/[0.025] p-3 text-left transition-colors hover:border-white/20 hover:bg-white/[0.05]"
-                >
-                  <div className="relative h-14 w-14 flex-none overflow-hidden rounded-xl">
-                    <img src={preset.thumbnail} alt="" className="h-full w-full object-cover" loading="lazy" />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-                    <Icon className="absolute bottom-1.5 right-1.5 h-3.5 w-3.5 text-white/90" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold text-white">{preset.title}</p>
-                    <p className="truncate text-[11px] text-white/40">{preset.artist}</p>
-                  </div>
-                  <Plus className="h-4 w-4 flex-none text-white/30 transition-colors group-hover:text-violet-300" />
-                </button>
-              );
-            })}
           </div>
         )}
       </div>
@@ -400,37 +342,36 @@ export function AddMediaModal({ open, onClose, notify }: AddMediaModalProps) {
 function PreviewCard({ preview }: { preview: ResolvedMedia }) {
   const Icon = providerIcon(preview.provider);
   return (
-    <div className="overflow-hidden rounded-2xl border border-white/[0.09] bg-white/[0.03]">
+    <div className="overflow-hidden rounded-xl border border-sand bg-paper">
       <div className="flex items-center gap-3 p-3">
-        <div className="relative h-16 w-16 flex-none overflow-hidden rounded-xl">
+        <div className="relative h-16 w-16 flex-none overflow-hidden rounded-lg bg-linen">
           {preview.thumbnail ? (
             <img src={preview.thumbnail} alt="" className="h-full w-full object-cover" />
           ) : (
-            <div className="grid h-full w-full place-items-center bg-gradient-to-br from-violet-500/30 to-cyan-500/20">
-              <Icon className="h-6 w-6 text-white/70" />
+            <div className="grid h-full w-full place-items-center">
+              <Icon className="h-6 w-6 text-taupe" />
             </div>
           )}
-          <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
-            <Icon className="h-3 w-3 text-violet-300" />
-            <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/45">
+            <Icon className="h-3 w-3 text-taupe" />
+            <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-taupe">
               {providerLabel(preview.provider)}
               {preview.sourceType ? ` · ${preview.sourceType}` : ''}
             </span>
           </div>
-          <p className="mt-0.5 line-clamp-2 text-sm font-semibold leading-snug text-white">
+          <p className="mt-0.5 line-clamp-2 text-sm font-medium leading-snug text-ink">
             {preview.title}
           </p>
-          <p className="truncate text-[11px] text-white/40">{preview.artist}</p>
+          <p className="truncate text-[11px] text-taupe">{preview.artist}</p>
         </div>
         {preview.items.length > 1 && (
           <span className="chip flex-none py-1 text-[10px]">{preview.items.length} tracks</span>
         )}
       </div>
       {preview.warning && (
-        <div className="border-t border-amber-300/15 bg-amber-400/[0.06] px-3.5 py-2.5 text-[11px] leading-relaxed text-amber-200/80">
+        <div className="border-t border-rust/20 bg-rust/5 px-3.5 py-2.5 text-[11px] leading-relaxed text-rust">
           {preview.warning}
         </div>
       )}

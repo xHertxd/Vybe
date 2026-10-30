@@ -6,43 +6,6 @@ import { SpotifyIntegration } from './spotifyIntegration.js';
 
 const AUDIO_EXTENSIONS = /\.(mp3|wav|ogg|oga|aac|m4a|flac|opus|webm)(\?.*)?$/i;
 
-export const PRESET_TRACKS: Array<Omit<MediaItemInput, 'isPlayable'>> = [
-  {
-    provider: 'audio',
-    sourceType: 'url',
-    mediaId: 'preset-neon-drift',
-    url: 'https://cdn.pixabay.com/download/audio/2022/03/15/audio_c8c8a73467.mp3?filename=neon-gaming-108740.mp3',
-    title: 'Neon Horizon',
-    artist: 'AlexiAction',
-    album: 'Retro Future Vol. 1',
-    thumbnail:
-      'https://images.unsplash.com/photo-1509198397868-475647b2a1e5?w=900&auto=format&fit=crop&q=80',
-    duration: 138,
-  },
-  {
-    provider: 'audio',
-    sourceType: 'url',
-    mediaId: 'preset-midnight-chill',
-    url: 'https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3?filename=lofi-study-112191.mp3',
-    title: 'Midnight Chill',
-    artist: 'FASSounds',
-    album: 'Vybe Night Sessions',
-    thumbnail:
-      'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=900&auto=format&fit=crop&q=80',
-    duration: 147,
-  },
-  {
-    provider: 'youtube',
-    sourceType: 'video',
-    mediaId: 'jfKfPfyJRdk',
-    url: 'https://www.youtube.com/watch?v=jfKfPfyJRdk',
-    title: 'lofi hip hop radio — beats to relax/study to',
-    artist: 'Lofi Girl',
-    thumbnail: 'https://i.ytimg.com/vi/jfKfPfyJRdk/hqdefault.jpg',
-    duration: 0,
-  },
-];
-
 export class MediaResolver {
   private readonly youtube: YouTubeIntegration;
   private readonly spotify: SpotifyIntegration;

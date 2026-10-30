@@ -8,7 +8,7 @@ import multer from 'multer';
 import { Server as SocketIOServer, type Socket } from 'socket.io';
 import { config } from './config.js';
 import type { MediaItemInput } from './types.js';
-import { MediaResolver, PRESET_TRACKS } from './media/mediaResolver.js';
+import { MediaResolver } from './media/mediaResolver.js';
 import { MediaSynchronizationEngine } from './sync/mediaSynchronizationEngine.js';
 import { RoomManager, RoomError } from './room/roomManager.js';
 
@@ -106,13 +106,6 @@ export function createVybeServer() {
       serverTime: Date.now(),
       capabilities: mediaResolver.capabilities(),
       rooms: roomManager.getRoomCodes().length,
-    });
-  });
-
-  app.get('/api/presets', (_req, res) => {
-    res.json({
-      success: true,
-      presets: PRESET_TRACKS.map((preset) => ({ ...preset, isPlayable: true })),
     });
   });
 

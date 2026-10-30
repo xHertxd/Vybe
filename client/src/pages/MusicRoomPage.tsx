@@ -18,6 +18,7 @@ import { socket } from '../services/socket.js';
 import { spotify } from '../services/spotify.js';
 import { Brand } from '../components/Brand.js';
 import { AuroraBackground } from '../components/AuroraBackground.js';
+import { Footer } from '../components/Footer.js';
 import { NowPlayingCard } from '../components/room/NowPlayingCard.js';
 import { SidePanel } from '../components/room/SidePanel.js';
 import { AddMediaModal } from '../components/AddMediaModal.js';
@@ -157,31 +158,31 @@ export function MusicRoomPage({
   const reconnectBanner = !connected || phase === 'reconnecting';
 
   return (
-    <div className="relative min-h-screen">
+    <div className="relative flex min-h-screen flex-col">
       <AuroraBackground dense />
 
       {/* ------------------------------------------------------------- header -- */}
-      <header className="sticky top-0 z-40 border-b border-white/[0.06] bg-[#06060a]/72 backdrop-blur-xl">
-        <div className="mx-auto flex h-16 w-full max-w-[1580px] items-center justify-between gap-3 px-3 sm:px-5 lg:px-8">
+      <header className="sticky top-0 z-40 border-b border-sand/80 bg-paper/90 backdrop-blur-xl">
+        <div className="mx-auto flex h-16 w-full max-w-[1480px] items-center justify-between gap-3 px-3 sm:px-5 lg:px-8">
           <div className="flex min-w-0 items-center gap-3">
             <Brand size="sm" />
-            <div className="hidden h-7 w-px bg-white/10 sm:block" />
+            <div className="hidden h-6 w-px bg-sand sm:block" />
             <button
               type="button"
               onClick={() => void copyCode()}
-              className="group flex items-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.03] px-2.5 py-1.5 transition-colors hover:border-white/15 hover:bg-white/[0.06]"
+              className="group flex items-center gap-2 rounded-lg border border-sand bg-cream px-2.5 py-1.5 transition-colors hover:bg-linen"
               title="Copy room code"
             >
-              <span className="text-[9px] font-semibold uppercase tracking-[0.18em] text-white/30">
+              <span className="text-[9px] font-medium uppercase tracking-[0.18em] text-taupe">
                 Room
               </span>
-              <span className="font-mono text-[13px] font-semibold tracking-[0.16em] text-white">
+              <span className="font-mono text-[13px] font-semibold tracking-[0.16em] text-ink">
                 {room.roomCode}
               </span>
               {copiedCode ? (
-                <Check className="h-3 w-3 text-emerald-300" />
+                <Check className="h-3 w-3 text-forest" />
               ) : (
-                <Copy className="h-3 w-3 text-white/30 group-hover:text-white/60" />
+                <Copy className="h-3 w-3 text-taupe group-hover:text-graphite" />
               )}
             </button>
             <button
@@ -200,8 +201,8 @@ export function MusicRoomPage({
               className={cn(
                 'hidden items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-medium sm:flex',
                 reconnectBanner
-                  ? 'border-amber-300/25 bg-amber-400/10 text-amber-200'
-                  : 'border-emerald-300/20 bg-emerald-400/[0.07] text-emerald-200/90'
+                  ? 'border-rust/25 bg-rust/5 text-rust'
+                  : 'border-forest/25 bg-forest/5 text-forest'
               )}
             >
               {reconnectBanner ? <WifiOff className="h-3 w-3" /> : <Wifi className="h-3 w-3" />}
@@ -213,8 +214,8 @@ export function MusicRoomPage({
                 <div
                   key={user.id}
                   className={cn(
-                    'grid h-7 w-7 place-items-center rounded-full border-2 border-[#06060a] bg-gradient-to-br text-[9px] font-bold text-white',
-                    user.isAdmin ? 'from-amber-400 to-orange-500' : 'from-violet-500 to-fuchsia-500'
+                    'grid h-7 w-7 place-items-center rounded-full border-2 border-paper text-[9px] font-semibold',
+                    user.isAdmin ? 'bg-ink text-cream' : 'bg-linen text-graphite'
                   )}
                   title={user.username}
                 >
@@ -222,24 +223,24 @@ export function MusicRoomPage({
                 </div>
               ))}
               {onlineUsers.length > 4 && (
-                <div className="grid h-7 w-7 place-items-center rounded-full border-2 border-[#06060a] bg-white/10 text-[9px] font-semibold text-white/60">
+                <div className="grid h-7 w-7 place-items-center rounded-full border-2 border-paper bg-linen text-[9px] font-medium text-taupe">
                   +{onlineUsers.length - 4}
                 </div>
               )}
             </div>
 
-            <div className="flex items-center gap-1 rounded-xl border border-white/[0.07] bg-white/[0.03] px-1.5 py-1">
-              <div className="grid h-6 w-6 place-items-center rounded-full bg-gradient-to-br from-violet-500 to-cyan-500 text-[9px] font-bold text-white">
+            <div className="flex items-center gap-2 rounded-lg border border-sand bg-cream px-2 py-1">
+              <div className="grid h-6 w-6 place-items-center rounded-full bg-linen text-[9px] font-semibold text-graphite">
                 {initials(currentUser.username)}
               </div>
               <div className="hidden pr-1 sm:block">
-                <p className="max-w-[100px] truncate text-[11px] font-semibold leading-tight text-white">
+                <p className="max-w-[100px] truncate text-[11px] font-medium leading-tight text-ink">
                   {currentUser.username}
                 </p>
-                <p className="flex items-center gap-0.5 text-[8.5px] leading-tight text-white/35">
+                <p className="flex items-center gap-0.5 text-[8.5px] leading-tight text-taupe">
                   {isAdmin ? (
                     <>
-                      <Crown className="h-2.5 w-2.5 text-amber-300" />
+                      <Crown className="h-2.5 w-2.5" />
                       Admin
                     </>
                   ) : (
@@ -253,7 +254,7 @@ export function MusicRoomPage({
               <button
                 type="button"
                 onClick={() => setConfirm('end')}
-                className="icon-btn h-8 w-8 hover:bg-rose-500/10 hover:text-rose-300"
+                className="icon-btn h-8 w-8 hover:bg-rust/10 hover:text-rust"
                 title="End room"
                 aria-label="End room"
               >
@@ -274,19 +275,19 @@ export function MusicRoomPage({
         </div>
 
         {reconnectBanner && (
-          <div className="border-t border-amber-300/15 bg-amber-400/[0.06] px-4 py-1.5 text-center text-[10.5px] text-amber-200/80">
-            Connection lost — reconnecting. Your seat is being held and playback will re-align
+          <div className="border-t border-rust/15 bg-rust/5 px-4 py-1.5 text-center text-[10.5px] text-rust">
+            Connection lost — reconnecting. Your seat is held and playback will re-align
             automatically.
           </div>
         )}
       </header>
 
       {/* --------------------------------------------------------------- main -- */}
-      <main className="mx-auto w-full max-w-[1580px] px-3 pb-10 pt-4 sm:px-5 sm:pt-5 lg:px-8">
+      <main className="mx-auto w-full max-w-[1480px] flex-1 px-3 pb-6 pt-4 sm:px-5 sm:pt-5 lg:px-8">
         <div
           className={cn(
             'grid items-start gap-4 lg:gap-5',
-            !theater && 'lg:grid-cols-[minmax(0,1fr)_350px] xl:grid-cols-[minmax(0,1fr)_390px]'
+            !theater && 'lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_380px]'
           )}
         >
           <div className="min-w-0 space-y-4">
@@ -308,15 +309,17 @@ export function MusicRoomPage({
             />
 
             <div className="panel flex flex-wrap items-center justify-between gap-3 rounded-2xl px-4 py-3">
-              <div className="flex items-center gap-2">
-                <div className="grid h-8 w-8 place-items-center rounded-lg bg-white/[0.05]">
-                  <ShieldCheck className="h-4 w-4 text-emerald-300/80" />
+              <div className="flex items-center gap-2.5">
+                <div className="grid h-8 w-8 place-items-center rounded-lg bg-linen">
+                  <ShieldCheck className="h-4 w-4 text-graphite" />
                 </div>
                 <div>
-                  <p className="text-[11px] font-semibold text-white/70">
-                    {isAdmin ? 'You are running this room' : `${adminUser?.username || 'The admin'} is running this room`}
+                  <p className="text-[11px] font-medium text-graphite">
+                    {isAdmin
+                      ? 'You are running this room'
+                      : `${adminUser?.username || 'The admin'} is running this room`}
                   </p>
-                  <p className="text-[10px] text-white/30">
+                  <p className="text-[10px] text-taupe">
                     {isAdmin
                       ? 'Playback, queue and settings are locked to you.'
                       : 'Only the admin can change playback. Your volume stays local.'}
@@ -338,7 +341,7 @@ export function MusicRoomPage({
                     <span
                       className={cn(
                         'h-1.5 w-1.5 rounded-full',
-                        spotifyConnected ? 'bg-emerald-400' : 'bg-white/30'
+                        spotifyConnected ? 'bg-forest' : 'bg-clay'
                       )}
                     />
                     {spotifyConnected
@@ -388,11 +391,13 @@ export function MusicRoomPage({
           )}
         </div>
 
-        <p className="mt-6 flex items-center justify-center gap-1.5 text-center text-[10px] text-white/20">
-          <span className="h-1 w-1 rounded-full bg-violet-400/60" />
-          Server-authoritative clock · peer drift corrected continuously · audio stays on your device
+        <p className="mt-6 flex items-center justify-center gap-1.5 text-center text-[10px] text-taupe">
+          <span className="h-1 w-1 rounded-full bg-clay" />
+          Server-authoritative clock · drift corrected continuously · audio stays on your device
         </p>
       </main>
+
+      <Footer compact />
 
       <AddMediaModal open={addOpen} onClose={() => setAddOpen(false)} notify={notify} />
 

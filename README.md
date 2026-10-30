@@ -67,6 +67,21 @@ see a clear explanation and an **Open in Spotify** fallback.
 Uploads use the server filesystem. On serverless hosts such as Vercel they land in `/tmp` and are
 not durable — prefer links for permanent rooms.
 
+**No demo content.** Vybe does not ship starter tracks, fake “now playing” previews or sample
+rooms. Every queue item comes from a real link you paste or a file you upload.
+
+---
+
+## Design
+
+A minimal, warm interface built on grey and beige tones: paper `#f4f1ea`, cream `#fbfaf7`, linen
+`#ebe6dc`, sand `#dbd3c5`, clay `#bfb4a1`, taupe `#8e8576`, graphite `#3d3933` and ink `#23201c`,
+with forest green and rust reserved for status. Typography pairs **Fraunces** (display) with
+**Inter** (body). No gradients, neon or dark mode — just quiet surfaces, thin borders and clear
+hierarchy.
+
+Vybe is designed and built by **Hertx**. The footer appears on both pages.
+
 ---
 
 ## Tech stack
@@ -107,8 +122,19 @@ npm run dev
 - API + WebSockets: <http://localhost:5000>
 - Health check: <http://localhost:5000/api/health>
 
-Vite proxies `/api`, `/uploads` and `/socket.io` to the backend in development. `VITE_SERVER_URL`
-is also set explicitly in `client/.env.example`; either path works.
+Vite proxies `/api`, `/uploads` and `/socket.io` to the backend in development, so the client
+connects to its own origin and no `VITE_SERVER_URL` is needed. Leave `VITE_SERVER_URL` blank
+(or omit it) unless the backend runs on a different host.
+
+### “Cannot reach the live server”
+
+The entry page tries to connect for ~9 seconds before showing this. If it appears:
+
+- Local: make sure `npm run dev` is running and <http://localhost:5000/api/health> returns
+  `{"status":"ok"}`.
+- Deployed: set `VITE_SERVER_URL` on the frontend host to the public URL of the Node backend
+  (`https://…`, no trailing slash), rebuild, and add the frontend origin to `ALLOWED_ORIGINS` on
+  the backend. A static-only Vercel deploy cannot host WebSockets by itself.
 
 ### Optional integrations
 
@@ -148,9 +174,9 @@ When the server finds `client/dist`, it serves the built SPA and rewrites unknow
 
 Vercel can run the Node server and supports native WebSockets, but each serverless instance has
 its own memory. Rooms, sessions and queues live in memory today, so a multi-instance deployment
-can route two listeners to different instances and break a room. Use a single instance for demos,
-or add a shared state/adapter layer (Redis + Socket.IO Redis adapter) before scaling out.
-Uploads on serverless are ephemeral (`/tmp`).
+can route two listeners to different instances and break a room. Run a single server instance, or
+add a shared state/adapter layer (Redis + Socket.IO Redis adapter) before scaling out. Uploads on
+serverless are ephemeral (`/tmp`).
 
 ---
 
@@ -178,3 +204,5 @@ Uploads on serverless are ephemeral (`/tmp`).
 ---
 
 MIT License. Built for listening together.
+
+Made by **Hertx** · [github.com/xHertxd](https://github.com/xHertxd)
