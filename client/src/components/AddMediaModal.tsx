@@ -1,19 +1,25 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  Check,
-  Link2,
-  Loader2,
-  Music2,
+  Search,
+  Play,
   Plus,
-  Radio,
+  Link2,
   UploadCloud,
+  Music2,
   Video,
+  X,
+  Loader2,
 } from 'lucide-react';
 import { Modal } from './Modal.js';
 import { cn } from '../lib/cn.js';
-import { getApiUrl, socket } from '../services/socket.js';
-import type { MediaItemInput, MediaProvider, ResolvedMedia } from '../types.js';
-import { providerLabel } from '../lib/format.js';
+import { socket } from '../services/socket.js';
+import {
+  searchSongs,
+  CURATED_TRACKS,
+  resolveDirectMedia,
+} from '../services/musicLibrary.js';
+import type { MediaItemInput } from '../types.js';
+import { formatDuration } from '../lib/format.js';
 
 interface AddMediaModalProps {
   open: boolean;
@@ -21,360 +27,489 @@ interface AddMediaModalProps {
   notify: (title: string, description?: string, tone?: 'info' | 'success' | 'error') => void;
 }
 
-type Tab = 'link' | 'upload';
+type ModalTab = 'library' | 'link' | 'upload';
 
-const AUDIO_RE = /\.(mp3|wav|ogg|oga|aac|m4a|flac|opus|webm)(\?.*)?$/i;
-
-function detectProvider(value: string): MediaProvider | 'unknown' {
-  const raw = value.trim();
-  if (!raw) return 'unknown';
-  if (/youtu\.?be|youtube\.com/i.test(raw)) return 'youtube';
-  if (/spotify\.com|spotify:/i.test(raw)) return 'spotify';
-  try {
-    const url = new URL(raw.startsWith('http') ? raw : `https://${raw}`);
-    if (AUDIO_RE.test(url.pathname)) return 'audio';
-  } catch {
-    return 'unknown';
-  }
-  return 'unknown';
-}
-
-function providerIcon(provider: MediaProvider) {
-  if (provider === 'youtube') return Video;
-  if (provider === 'spotify') return Music2;
-  return Radio;
-}
+const POPULAR_QUERIES = [
+  'The Weeknd',
+  'Daft Punk',
+  'Coldplay',
+  'Dua Lipa',
+  'Post Malone',
+  'Lofi Beats',
+  'Synthwave',
+];
 
 export function AddMediaModal({ open, onClose, notify }: AddMediaModalProps) {
-  const [tab, setTab] = useState<Tab>('link');
-  const [url, setUrl] = useState('');
-  const [resolving, setResolving] = useState(false);
-  const [preview, setPreview] = useState<ResolvedMedia | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const [uploaded, setUploaded] = useState<MediaItemInput | null>(null);
-  const [dragging, setDragging] = useState(false);
+  const [tab, setTab] = useState<ModalTab>('library');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<MediaItemInput[]>(CURATED_TRACKS);
+  const [isSearching, setIsSearching] = useState(false);
+
+  // Link tab states
+  const [linkInput, setLinkInput] = useState('');
+  const [isResolvingLink, setIsResolvingLink] = useState(false);
+  const [linkPreview, setLinkPreview] = useState<MediaItemInput | null>(null);
+  const [linkError, setLinkError] = useState<string | null>(null);
+
+  // Upload tab states
+  const [uploadedTrack, setUploadedTrack] = useState<MediaItemInput | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const detected = detectProvider(url);
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!open) {
-      setUrl('');
-      setPreview(null);
-      setError(null);
-      setUploaded(null);
+      setSearchQuery('');
+      setSearchResults(CURATED_TRACKS);
+      setLinkInput('');
+      setLinkPreview(null);
+      setLinkError(null);
+      setUploadedTrack(null);
     }
   }, [open]);
 
-  const resolve = async () => {
-    const clean = url.trim();
-    if (!clean) {
-      setError('Paste a link first.');
+  // Live search as user types
+  const handleQueryChange = (text: string) => {
+    setSearchQuery(text);
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+
+    if (!text.trim()) {
+      setSearchResults(CURATED_TRACKS);
+      setIsSearching(false);
       return;
     }
-    setResolving(true);
-    setError(null);
-    setPreview(null);
 
-    try {
-      const response = await fetch(getApiUrl('/api/resolve-media'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: clean }),
-      });
-      const data = (await response.json()) as {
-        success?: boolean;
-        data?: ResolvedMedia;
-        error?: string;
-      };
-      if (!response.ok || !data.success || !data.data) {
-        setError(data.error || 'That link could not be resolved.');
-        return;
+    setIsSearching(true);
+    searchTimer.current = setTimeout(async () => {
+      try {
+        const results = await searchSongs(text);
+        setSearchResults(results.length > 0 ? results : CURATED_TRACKS);
+      } catch {
+        setSearchResults(CURATED_TRACKS);
+      } finally {
+        setIsSearching(false);
       }
-      setPreview(data.data);
-    } catch {
-      setError('Could not reach the media resolver. Check your connection.');
-    } finally {
-      setResolving(false);
-    }
+    }, 280);
   };
 
-  const addItems = (items: MediaItemInput[], label: string) => {
-    if (items.length === 0) return;
-    socket.emit('queue:add', { items });
-    notify(
-      items.length > 1 ? `${items.length} tracks queued` : 'Added to queue',
-      label,
-      'success'
-    );
-    setPreview(null);
-    setUploaded(null);
-    setUrl('');
+  const handlePlayNow = (track: MediaItemInput) => {
+    socket.emit('queue:play_now', { item: track });
+    notify('Playing now', `${track.title} · ${track.artist}`, 'success');
     onClose();
   };
 
-  const uploadFile = async (file: File) => {
-    if (!file) return;
-    if (file.size > 30 * 1024 * 1024) {
-      setError('That file is larger than 30 MB.');
-      return;
-    }
-    setUploading(true);
-    setError(null);
-    setUploaded(null);
+  const handleAddToQueue = (track: MediaItemInput) => {
+    socket.emit('queue:add', { item: track });
+    notify('Added to queue', `${track.title} · ${track.artist}`, 'success');
+    onClose();
+  };
+
+  // Resolve direct URL
+  const handleResolveLink = async () => {
+    const clean = linkInput.trim();
+    if (!clean) return;
+
+    setIsResolvingLink(true);
+    setLinkError(null);
+    setLinkPreview(null);
 
     try {
-      const body = new FormData();
-      body.append('audio', file);
-      const response = await fetch(getApiUrl('/api/upload'), { method: 'POST', body });
-      const data = (await response.json()) as {
-        success?: boolean;
-        item?: MediaItemInput;
-        error?: string;
-      };
-      if (!response.ok || !data.success || !data.item) {
-        setError(data.error || 'Upload failed.');
-        return;
-      }
-      setUploaded(data.item);
-    } catch {
-      setError('Upload failed. Check your connection and try again.');
+      const item = await resolveDirectMedia(clean);
+      setLinkPreview(item);
+    } catch (err) {
+      setLinkError(err instanceof Error ? err.message : 'Could not resolve that link.');
     } finally {
-      setUploading(false);
+      setIsResolvingLink(false);
     }
   };
 
-  return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title="Add to the queue"
-      description="YouTube videos, Shorts, playlists, Spotify links, direct audio, or a file upload."
-      className="max-w-xl"
-    >
-      <div className="grid grid-cols-2 gap-1 rounded-xl border border-sand bg-paper p-1">
-        {(
-          [
-            { id: 'link', label: 'Link', icon: Link2 },
-            { id: 'upload', label: 'Upload', icon: UploadCloud },
-          ] as const
-        ).map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            onClick={() => {
-              setTab(item.id);
-              setError(null);
-            }}
-            className={cn(
-              'flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-medium transition-colors',
-              tab === item.id
-                ? 'bg-cream text-ink shadow-[0_1px_2px_rgba(35,32,28,0.08)]'
-                : 'text-taupe hover:text-graphite'
-            )}
-          >
-            <item.icon className="h-3.5 w-3.5" />
-            {item.label}
-          </button>
-        ))}
-      </div>
+  // Upload audio
+  const handleFileSelect = (file: File) => {
+    if (!file) return;
+    if (file.size > 50 * 1024 * 1024) {
+      notify('File too large', 'Please select an audio file under 50 MB.', 'error');
+      return;
+    }
 
-      <div className="mt-5">
-        {tab === 'link' && (
-          <div className="space-y-4">
-            <div>
-              <div className="flex items-center justify-between">
-                <label htmlFor="media-url" className="text-[10px] font-medium uppercase tracking-[0.18em] text-taupe">
-                  Media link
-                </label>
-                {detected !== 'unknown' && (
-                  <span className="chip chip-accent py-1 text-[10px]">
-                    {providerLabel(detected)} detected
-                  </span>
-                )}
+    const objectUrl = URL.createObjectURL(file);
+    const cleanTitle = file.name.replace(/\.[a-z0-9]+$/i, '');
+
+    const item: MediaItemInput = {
+      provider: 'audio',
+      sourceType: 'upload',
+      mediaId: `upload_${Date.now()}`,
+      url: objectUrl,
+      title: cleanTitle,
+      artist: 'Local Upload',
+      thumbnail: '',
+      duration: 180,
+      isPlayable: true,
+    };
+
+    setUploadedTrack(item);
+  };
+
+  return (
+    <Modal open={open} onClose={onClose} className="max-w-2xl w-full p-0 overflow-hidden bg-[#212124] rounded-3xl border border-white/10 shadow-2xl" hideClose>
+      <div className="flex flex-col h-[600px] max-h-[85vh] bg-[#212124] text-[#fde5b7]">
+        {/* Modal Header & Navigation */}
+        <div className="p-5 pb-3 border-b border-white/5 space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-[#fde5b7] text-black grid place-items-center font-bold">
+                <Music2 className="w-4 h-4 text-black" />
               </div>
-              <div className="mt-2 flex gap-2">
-                <input
-                  id="media-url"
-                  value={url}
-                  onChange={(event) => {
-                    setUrl(event.target.value);
-                    setPreview(null);
-                    setError(null);
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') {
-                      event.preventDefault();
-                      void resolve();
-                    }
-                  }}
-                  placeholder="https://youtube.com/watch?v=… or https://open.spotify.com/track/…"
-                  className="field h-12 flex-1 text-[13px]"
-                  autoFocus
-                />
-                <button
-                  type="button"
-                  onClick={() => void resolve()}
-                  disabled={resolving || !url.trim()}
-                  className="btn btn-ghost h-12 px-4"
-                >
-                  {resolving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Fetch'}
-                </button>
+              <div>
+                <h2 className="font-brand font-black text-lg text-white tracking-tight">
+                  Music Library
+                </h2>
+                <p className="text-[11px] text-[#a8a29e]">
+                  Search songs, drop YouTube or Spotify links, or upload audio.
+                </p>
               </div>
             </div>
 
-            {error && (
-              <div className="rounded-xl border border-rust/25 bg-rust/5 px-3.5 py-2.5 text-xs text-rust">
-                {error}
-              </div>
-            )}
-
-            {preview && <PreviewCard preview={preview} />}
-
             <button
               type="button"
-              onClick={() => preview && addItems(preview.items, preview.title)}
-              disabled={!preview}
-              className="btn btn-primary h-11 w-full"
+              onClick={onClose}
+              className="p-1.5 rounded-lg text-[#a8a29e] hover:text-white hover:bg-white/5 transition-colors"
             >
-              <Plus className="h-4 w-4" />
-              {preview
-                ? preview.items.length > 1
-                  ? `Add ${preview.items.length} tracks`
-                  : 'Add to queue'
-                : 'Fetch a link to continue'}
+              <X className="w-5 h-5" />
             </button>
-
-            <p className="text-center text-[10px] leading-relaxed text-taupe">
-              Only real links are queued. YouTube requires the official IFrame player; Spotify
-              playback needs a personal Premium account.
-            </p>
           </div>
-        )}
 
-        {tab === 'upload' && (
-          <div className="space-y-4">
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="audio/*,.mp3,.wav,.ogg,.m4a,.flac"
-              className="hidden"
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                if (file) void uploadFile(file);
-              }}
-            />
+          {/* Navigation Tabs */}
+          <div className="flex items-center gap-1.5 bg-[#171719] p-1 rounded-xl border border-white/5 text-xs font-medium">
             <button
               type="button"
-              onClick={() => fileInputRef.current?.click()}
-              onDragOver={(event) => {
-                event.preventDefault();
-                setDragging(true);
-              }}
-              onDragLeave={() => setDragging(false)}
-              onDrop={(event) => {
-                event.preventDefault();
-                setDragging(false);
-                const file = event.dataTransfer.files?.[0];
-                if (file) void uploadFile(file);
-              }}
+              onClick={() => setTab('library')}
               className={cn(
-                'flex w-full flex-col items-center justify-center gap-3 rounded-xl border border-dashed px-6 py-10 transition-colors',
-                dragging
-                  ? 'border-taupe bg-linen'
-                  : 'border-sand bg-paper hover:border-clay hover:bg-linen/60'
+                'flex-1 py-2 px-3 rounded-lg flex items-center justify-center gap-2 transition-all',
+                tab === 'library'
+                  ? 'bg-[#262629] text-[#fde5b7] shadow-sm font-semibold'
+                  : 'text-[#a8a29e] hover:text-white'
               )}
             >
-              {uploading ? (
-                <Loader2 className="h-7 w-7 animate-spin text-taupe" />
-              ) : (
-                <UploadCloud className="h-7 w-7 text-taupe" />
-              )}
-              <div className="text-center">
-                <p className="text-sm font-medium text-ink">
-                  {uploading ? 'Uploading…' : 'Drop an audio file or click to browse'}
-                </p>
-                <p className="mt-1 text-[11px] text-taupe">MP3, WAV, OGG, M4A, FLAC · up to 30 MB</p>
-              </div>
+              <Search className="w-3.5 h-3.5" />
+              <span>Browse Library</span>
             </button>
-
-            {error && (
-              <div className="rounded-xl border border-rust/25 bg-rust/5 px-3.5 py-2.5 text-xs text-rust">
-                {error}
-              </div>
-            )}
-
-            {uploaded && (
-              <div className="flex items-center gap-3 rounded-xl border border-sand bg-paper p-3">
-                <div className="grid h-12 w-12 flex-none place-items-center rounded-lg bg-linen">
-                  <Music2 className="h-5 w-5 text-graphite" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-ink">{uploaded.title}</p>
-                  <p className="text-[11px] text-taupe">Ready to queue</p>
-                </div>
-                <Check className="h-4 w-4 text-forest" />
-              </div>
-            )}
-
             <button
               type="button"
-              onClick={() => uploaded && addItems([uploaded], uploaded.title)}
-              disabled={!uploaded}
-              className="btn btn-primary h-11 w-full"
+              onClick={() => setTab('link')}
+              className={cn(
+                'flex-1 py-2 px-3 rounded-lg flex items-center justify-center gap-2 transition-all',
+                tab === 'link'
+                  ? 'bg-[#262629] text-[#fde5b7] shadow-sm font-semibold'
+                  : 'text-[#a8a29e] hover:text-white'
+              )}
             >
-              <Plus className="h-4 w-4" />
-              Add uploaded file
+              <Link2 className="w-3.5 h-3.5" />
+              <span>Paste Link</span>
             </button>
-
-            <p className="text-center text-[10px] leading-relaxed text-taupe">
-              Uploads live on the server instance. On serverless hosting they are temporary, so
-              prefer links for permanent rooms.
-            </p>
+            <button
+              type="button"
+              onClick={() => setTab('upload')}
+              className={cn(
+                'flex-1 py-2 px-3 rounded-lg flex items-center justify-center gap-2 transition-all',
+                tab === 'upload'
+                  ? 'bg-[#262629] text-[#fde5b7] shadow-sm font-semibold'
+                  : 'text-[#a8a29e] hover:text-white'
+              )}
+            >
+              <UploadCloud className="w-3.5 h-3.5" />
+              <span>Upload Audio</span>
+            </button>
           </div>
-        )}
-      </div>
-    </Modal>
-  );
-}
+        </div>
 
-function PreviewCard({ preview }: { preview: ResolvedMedia }) {
-  const Icon = providerIcon(preview.provider);
-  return (
-    <div className="overflow-hidden rounded-xl border border-sand bg-paper">
-      <div className="flex items-center gap-3 p-3">
-        <div className="relative h-16 w-16 flex-none overflow-hidden rounded-lg bg-linen">
-          {preview.thumbnail ? (
-            <img src={preview.thumbnail} alt="" className="h-full w-full object-cover" />
-          ) : (
-            <div className="grid h-full w-full place-items-center">
-              <Icon className="h-6 w-6 text-taupe" />
+        {/* Modal Body */}
+        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+          {/* TAB 1: BROWSE & SEARCH LIBRARY */}
+          {tab === 'library' && (
+            <div className="space-y-4">
+              {/* Search Bar */}
+              <div className="relative">
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#a8a29e]" />
+                <input
+                  type="text"
+                  autoFocus
+                  value={searchQuery}
+                  onChange={(e) => handleQueryChange(e.target.value)}
+                  placeholder="Search by song name, artist, or album..."
+                  className="w-full pl-10 pr-10 py-3 rounded-xl bg-[#171719] border border-white/10 text-white placeholder:text-[#78716c] text-sm focus:outline-none focus:border-[#fde5b7]/50"
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => handleQueryChange('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-[#a8a29e] hover:text-white"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+
+              {/* Quick Search Chips */}
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
+                <span className="text-[10px] uppercase font-bold text-[#78716c] tracking-wider shrink-0 mr-1">
+                  Popular:
+                </span>
+                {POPULAR_QUERIES.map((q) => (
+                  <button
+                    key={q}
+                    type="button"
+                    onClick={() => handleQueryChange(q)}
+                    className="px-2.5 py-1 rounded-full bg-[#171719] border border-white/5 text-[#a8a29e] hover:text-[#fde5b7] hover:border-[#fde5b7]/30 transition-all shrink-0 text-xs"
+                  >
+                    {q}
+                  </button>
+                ))}
+              </div>
+
+              {/* Track Results */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs text-[#a8a29e] px-1">
+                  <span className="font-semibold uppercase tracking-wider text-[10px]">
+                    {searchQuery ? `Search Results (${searchResults.length})` : 'Featured Tracks'}
+                  </span>
+                  {isSearching && (
+                    <span className="flex items-center gap-1.5 text-xs text-[#fde5b7]">
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                      Searching...
+                    </span>
+                  )}
+                </div>
+
+                <div className="space-y-1.5">
+                  {searchResults.map((track, idx) => (
+                    <div
+                      key={track.mediaId || idx}
+                      className="group flex items-center justify-between p-2.5 rounded-xl bg-[#171719] hover:bg-[#262629] border border-white/5 hover:border-white/10 transition-all gap-3"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        {track.thumbnail ? (
+                          <img
+                            src={track.thumbnail}
+                            alt={track.title}
+                            className="w-12 h-12 rounded-lg object-cover bg-black shrink-0 shadow-sm"
+                            loading="lazy"
+                          />
+                        ) : (
+                          <div className="w-12 h-12 rounded-lg bg-[#262629] grid place-items-center text-[#fde5b7] shrink-0">
+                            <Music2 className="w-5 h-5" />
+                          </div>
+                        )}
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-white truncate group-hover:text-[#fde5b7] transition-colors">
+                            {track.title}
+                          </p>
+                          <p className="text-xs text-[#a8a29e] truncate">
+                            {track.artist}
+                            {track.album && ` · ${track.album}`}
+                          </p>
+                          <span className="text-[10px] text-[#78716c] font-mono">
+                            {formatDuration(track.duration)}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Action Buttons: Play Directly & Add to Queue */}
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => handlePlayNow(track)}
+                          className="px-3 py-1.5 rounded-lg bg-[#fde5b7] hover:bg-[#fee8c8] text-black font-semibold text-xs flex items-center gap-1.5 shadow-sm active:scale-95 transition-all"
+                          title="Play directly on all devices"
+                        >
+                          <Play className="w-3.5 h-3.5 fill-current" />
+                          <span>Play Now</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleAddToQueue(track)}
+                          className="p-1.5 rounded-lg bg-[#262629] hover:bg-[#313136] text-[#fde5b7] border border-white/10 hover:border-white/20 active:scale-95 transition-all"
+                          title="Add to queue"
+                        >
+                          <Plus className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 2: PASTE LINK */}
+          {tab === 'link' && (
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs uppercase font-semibold text-[#a8a29e] mb-1.5">
+                  Paste YouTube, Spotify, or Audio URL
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={linkInput}
+                    onChange={(e) => {
+                      setLinkInput(e.target.value);
+                      setLinkError(null);
+                    }}
+                    onKeyDown={(e) => e.key === 'Enter' && handleResolveLink()}
+                    placeholder="https://www.youtube.com/watch?v=... or Spotify link"
+                    className="flex-1 px-3.5 py-2.5 rounded-xl bg-[#171719] border border-white/10 text-white placeholder:text-[#78716c] text-sm focus:outline-none focus:border-[#fde5b7]/50"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleResolveLink}
+                    disabled={isResolvingLink || !linkInput.trim()}
+                    className="px-4 py-2.5 rounded-xl bg-[#fde5b7] text-black font-semibold text-xs hover:bg-[#fee8c8] disabled:opacity-50 transition-all flex items-center gap-1.5"
+                  >
+                    {isResolvingLink ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <span>Resolve</span>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {linkError && (
+                <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-200 text-xs">
+                  {linkError}
+                </div>
+              )}
+
+              {linkPreview && (
+                <div className="p-4 rounded-2xl bg-[#171719] border border-white/10 space-y-4">
+                  <div className="flex items-center gap-3">
+                    {linkPreview.thumbnail ? (
+                      <img
+                        src={linkPreview.thumbnail}
+                        alt={linkPreview.title}
+                        className="w-16 h-16 rounded-xl object-cover bg-black shrink-0"
+                      />
+                    ) : (
+                      <div className="w-16 h-16 rounded-xl bg-[#262629] grid place-items-center text-[#fde5b7] shrink-0">
+                        {linkPreview.provider === 'youtube' ? (
+                          <Video className="w-6 h-6" />
+                        ) : (
+                          <Music2 className="w-6 h-6" />
+                        )}
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <span className="text-[10px] uppercase font-bold text-[#fde5b7] tracking-wider">
+                        {linkPreview.provider} · {linkPreview.sourceType}
+                      </span>
+                      <p className="text-sm font-bold text-white truncate">
+                        {linkPreview.title}
+                      </p>
+                      <p className="text-xs text-[#a8a29e] truncate">{linkPreview.artist}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-2 border-t border-white/5">
+                    <button
+                      type="button"
+                      onClick={() => handlePlayNow(linkPreview)}
+                      className="flex-1 py-2 rounded-xl bg-[#fde5b7] text-black font-semibold text-xs hover:bg-[#fee8c8] flex items-center justify-center gap-1.5 transition-all shadow-sm"
+                    >
+                      <Play className="w-3.5 h-3.5 fill-current" />
+                      <span>Play Now</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleAddToQueue(linkPreview)}
+                      className="flex-1 py-2 rounded-xl bg-[#262629] text-[#fde5b7] font-semibold text-xs hover:bg-[#313136] border border-white/10 flex items-center justify-center gap-1.5 transition-all"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Add to Queue</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB 3: UPLOAD AUDIO */}
+          {tab === 'upload' && (
+            <div className="space-y-4">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="audio/*"
+                onChange={(e) => {
+                  if (e.target.files?.[0]) handleFileSelect(e.target.files[0]);
+                }}
+                className="hidden"
+              />
+
+              <div
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setIsDragging(true);
+                }}
+                onDragLeave={() => setIsDragging(false)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setIsDragging(false);
+                  if (e.dataTransfer.files?.[0]) handleFileSelect(e.dataTransfer.files[0]);
+                }}
+                onClick={() => fileInputRef.current?.click()}
+                className={cn(
+                  'p-8 rounded-2xl border-2 border-dashed flex flex-col items-center justify-center text-center cursor-pointer transition-all',
+                  isDragging
+                    ? 'border-[#fde5b7] bg-[#fde5b7]/5'
+                    : 'border-white/10 hover:border-white/20 bg-[#171719]'
+                )}
+              >
+                <div className="w-12 h-12 rounded-2xl bg-[#262629] grid place-items-center text-[#fde5b7] mb-3">
+                  <UploadCloud className="w-6 h-6" />
+                </div>
+                <p className="text-sm font-semibold text-white">Click or drag audio file here</p>
+                <p className="text-xs text-[#a8a29e] mt-1">Supports MP3, WAV, AAC, M4A up to 50MB</p>
+              </div>
+
+              {uploadedTrack && (
+                <div className="p-4 rounded-2xl bg-[#171719] border border-white/10 space-y-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-xl bg-[#262629] grid place-items-center text-[#fde5b7] shrink-0">
+                      <Music2 className="w-6 h-6" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-bold text-white truncate">
+                        {uploadedTrack.title}
+                      </p>
+                      <p className="text-xs text-[#a8a29e]">Audio file ready</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-2 border-t border-white/5">
+                    <button
+                      type="button"
+                      onClick={() => handlePlayNow(uploadedTrack)}
+                      className="flex-1 py-2 rounded-xl bg-[#fde5b7] text-black font-semibold text-xs hover:bg-[#fee8c8] flex items-center justify-center gap-1.5 transition-all shadow-sm"
+                    >
+                      <Play className="w-3.5 h-3.5 fill-current" />
+                      <span>Play Now</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleAddToQueue(uploadedTrack)}
+                      className="flex-1 py-2 rounded-xl bg-[#262629] text-[#fde5b7] font-semibold text-xs hover:bg-[#313136] border border-white/10 flex items-center justify-center gap-1.5 transition-all"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Add to Queue</span>
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5">
-            <Icon className="h-3 w-3 text-taupe" />
-            <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-taupe">
-              {providerLabel(preview.provider)}
-              {preview.sourceType ? ` · ${preview.sourceType}` : ''}
-            </span>
-          </div>
-          <p className="mt-0.5 line-clamp-2 text-sm font-medium leading-snug text-ink">
-            {preview.title}
-          </p>
-          <p className="truncate text-[11px] text-taupe">{preview.artist}</p>
-        </div>
-        {preview.items.length > 1 && (
-          <span className="chip flex-none py-1 text-[10px]">{preview.items.length} tracks</span>
-        )}
       </div>
-      {preview.warning && (
-        <div className="border-t border-rust/20 bg-rust/5 px-3.5 py-2.5 text-[11px] leading-relaxed text-rust">
-          {preview.warning}
-        </div>
-      )}
-    </div>
+    </Modal>
   );
 }

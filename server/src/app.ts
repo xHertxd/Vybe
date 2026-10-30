@@ -493,6 +493,34 @@ export function createVybeServer() {
     // -- Queue ----------------------------------------------------------------
 
     socket.on(
+      'queue:play_now',
+      (payload: { roomCode?: string; item?: MediaItemInput } = {}) => {
+        playbackAction(socket, payload, (session) => {
+          if (!payload.item) return;
+          const result = roomManager.addMedia(session.roomCode, session.userId, [payload.item]);
+          if (result.added.length > 0) {
+            const state = roomManager.getState(session.roomCode);
+            if (state) {
+              const index = state.queue.length - 1;
+              roomManager.playIndex(session.roomCode, session.userId, index);
+            }
+          }
+        });
+      }
+    );
+
+    socket.on(
+      'playback:play_index',
+      (payload: { roomCode?: string; index?: number } = {}) => {
+        playbackAction(socket, payload, (session) => {
+          if (typeof payload.index === 'number') {
+            roomManager.playIndex(session.roomCode, session.userId, payload.index);
+          }
+        });
+      }
+    );
+
+    socket.on(
       'queue:add',
       (payload: { roomCode?: string; item?: MediaItemInput; items?: MediaItemInput[] } = {}) => {
         playbackAction(socket, payload, (session) => {

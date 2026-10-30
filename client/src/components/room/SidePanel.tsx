@@ -144,9 +144,9 @@ export function SidePanel({
                     : 'The admin will add the first track soon.'}
                 </p>
                 {isAdmin && (
-                  <button type="button" onClick={onOpenAdd} className="btn btn-ghost mt-3 h-8 px-3 text-[11px]">
+                  <button type="button" onClick={onOpenAdd} className="btn btn-ghost mt-3 h-8 px-3 text-[11px] font-semibold text-[#fde5b7]">
                     <Plus className="h-3.5 w-3.5" />
-                    Add media
+                    Browse Library / Add Track
                   </button>
                 )}
               </div>

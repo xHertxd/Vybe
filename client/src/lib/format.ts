@@ -30,3 +30,5 @@ export function safeHostname(url: string): string {
     return '';
   }
 }
+
+export const formatDuration = formatTime;

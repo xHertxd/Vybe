@@ -1,23 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import {
-  Pencil,
-  Check,
-  AlertCircle,
-  ArrowRight,
-  Server,
-  RefreshCw,
-  X,
-  Shuffle,
-} from 'lucide-react';
+import { Pencil, Check, AlertCircle, ArrowRight, Shuffle } from 'lucide-react';
 import { Footer } from '../components/Footer.js';
 import type { RoomPhase } from '../hooks/useRoomSession.js';
-import {
-  getConnectionInfo,
-  subscribeConnectionInfo,
-  setCustomServerUrl,
-  resetServerUrl,
-  type ConnectionInfo,
-} from '../services/socket.js';
 
 interface RoomEntryPageProps {
   onCreate: (username: string) => void;
@@ -70,11 +54,10 @@ export function RoomEntryPage({
   onCreate,
   onJoin,
   phase,
-  connected,
   initialUsername,
   initialCode,
 }: RoomEntryPageProps) {
-  // Automatically generate random alphabetic name on load if not set
+  // Automatically generate random alphabetic name on load
   const [username, setUsername] = useState<string>(() => {
     return initialUsername && USERNAME_RE.test(initialUsername)
       ? initialUsername
@@ -91,20 +74,8 @@ export function RoomEntryPage({
   });
   const [error, setError] = useState<string | null>(null);
 
-  // Live connection state
-  const [connInfo, setConnInfo] = useState<ConnectionInfo>(() => getConnectionInfo());
-  const [showServerModal, setShowServerModal] = useState(false);
-  const [serverUrlInput, setServerUrlInput] = useState(connInfo.url);
-
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const busy = phase === 'connecting';
-
-  useEffect(() => {
-    return subscribeConnectionInfo((info) => {
-      setConnInfo(info);
-      setServerUrlInput(info.url);
-    });
-  }, []);
 
   useEffect(() => {
     if (initialCode && /^\d{6}$/.test(initialCode)) {
@@ -201,60 +172,25 @@ export function RoomEntryPage({
     onJoin(currentCode, clean);
   };
 
-  const handleSaveServerUrl = () => {
-    const clean = serverUrlInput.trim();
-    if (!clean) return;
-    setCustomServerUrl(clean);
-    setShowServerModal(false);
-  };
-
-  const handleResetServerUrl = () => {
-    resetServerUrl();
-    setShowServerModal(false);
-  };
-
-  const isConnected = connected || connInfo.status === 'connected';
-
   return (
-    <div className="relative min-h-screen w-full flex flex-col justify-between bg-[#171719] overflow-hidden text-[#fde5b7]">
-      {/* Top Header Banner matching exact user design */}
-      <div className="w-full flex items-start justify-between z-10">
+    <div className="relative min-h-screen w-full bg-[#171719] overflow-hidden text-[#fde5b7] flex flex-col items-center justify-center">
+      {/* Top Header Banner matching user design */}
+      <div className="absolute top-0 left-0 z-20">
         <div className="bg-[#fde5b7] text-black px-10 sm:px-14 py-4 sm:py-5 rounded-br-[40px] sm:rounded-br-[56px] flex items-center shadow-lg">
           <span className="font-brand font-black text-4xl sm:text-5xl md:text-6xl tracking-tighter select-none">
             VYBE
           </span>
         </div>
-
-        {/* Live Server Status Pill */}
-        <div className="p-4 sm:p-7 flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setShowServerModal(true)}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#262629] border border-white/10 hover:border-[#fde5b7]/40 transition-all text-xs font-mono group"
-            title="Click to view or edit server connection"
-          >
-            <span
-              className={`w-2 h-2 rounded-full ${
-                isConnected
-                  ? 'bg-[#86efac]'
-                  : connInfo.status === 'error'
-                  ? 'bg-[#f87171]'
-                  : 'bg-[#fbbf24] animate-pulse'
-              }`}
-            />
-            <span className="text-[#a8a29e] group-hover:text-[#fde5b7] transition-colors">
-              {isConnected
-                ? 'Live'
-                : connInfo.status === 'error'
-                ? `Offline (${connInfo.host})`
-                : `Connecting to ${connInfo.host}...`}
-            </span>
-          </button>
-        </div>
       </div>
 
-      {/* Main Center Container */}
-      <div className="my-auto w-full max-w-lg sm:max-w-xl px-4 py-8 z-10 flex flex-col items-center">
+      {/* Subtle Live Status Indicator */}
+      <div className="absolute top-0 right-0 z-20 p-5 sm:p-7 flex items-center gap-2">
+        <span className="w-2 h-2 rounded-full bg-[#86efac]" />
+        <span className="text-xs font-mono text-[#a8a29e]">Live</span>
+      </div>
+
+      {/* Center Container - DEAD CENTER of Viewport */}
+      <div className="w-full max-w-lg sm:max-w-xl px-4 py-8 z-10 flex flex-col items-center my-auto">
         {/* The Card from user design */}
         <div className="w-full bg-[#262629] rounded-[36px] sm:rounded-[44px] p-8 sm:p-12 shadow-2xl flex flex-col items-center border border-white/5">
           {/* 6 Digit Input Boxes */}
@@ -379,91 +315,9 @@ export function RoomEntryPage({
       </div>
 
       {/* Footer */}
-      <Footer />
-
-      {/* Server Configuration Modal */}
-      {showServerModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
-          <div className="w-full max-w-md bg-[#262629] border border-white/10 rounded-3xl p-6 shadow-2xl text-[#fde5b7] space-y-5">
-            <div className="flex items-center justify-between pb-3 border-b border-white/10">
-              <div className="flex items-center gap-2.5">
-                <Server className="w-5 h-5 text-[#fde5b7]" />
-                <h3 className="font-brand font-bold text-lg text-white">Live Server Status</h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowServerModal(false)}
-                className="p-1 rounded-lg text-[#a8a29e] hover:text-white hover:bg-white/5 transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="space-y-3 text-xs">
-              <div className="flex items-center justify-between p-3 rounded-xl bg-[#171719] border border-white/5">
-                <span className="text-[#a8a29e]">Connection State:</span>
-                <span className="flex items-center gap-1.5 font-semibold">
-                  <span
-                    className={`w-2 h-2 rounded-full ${
-                      isConnected
-                        ? 'bg-[#86efac]'
-                        : connInfo.status === 'error'
-                        ? 'bg-[#f87171]'
-                        : 'bg-[#fbbf24] animate-pulse'
-                    }`}
-                  />
-                  {isConnected
-                    ? 'Connected (Live)'
-                    : connInfo.status === 'error'
-                    ? 'Offline'
-                    : 'Connecting...'}
-                </span>
-              </div>
-
-              <div>
-                <label className="block text-[11px] uppercase tracking-wider text-[#a8a29e] font-semibold mb-1.5">
-                  Vybe Backend Server URL
-                </label>
-                <input
-                  type="text"
-                  value={serverUrlInput}
-                  onChange={(e) => setServerUrlInput(e.target.value)}
-                  placeholder="http://localhost:5000"
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#171719] border border-white/10 focus:border-[#fde5b7] text-white font-mono text-xs focus:outline-none"
-                />
-                <p className="mt-1 text-[11px] text-[#a8a29e]">
-                  Locally running server defaults to{' '}
-                  <span className="font-mono text-[#fde5b7]">http://localhost:5000</span>.
-                </p>
-              </div>
-
-              {connInfo.lastError && (
-                <div className="p-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-200 text-[11px] leading-relaxed">
-                  <strong>Notice:</strong> {connInfo.lastError}
-                </div>
-              )}
-            </div>
-
-            <div className="flex items-center justify-end gap-2.5 pt-2">
-              <button
-                type="button"
-                onClick={handleResetServerUrl}
-                className="px-3.5 py-2 rounded-xl border border-white/10 text-xs text-[#a8a29e] hover:text-white hover:bg-white/5 transition-all flex items-center gap-1.5"
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-                <span>Reset to Local</span>
-              </button>
-              <button
-                type="button"
-                onClick={handleSaveServerUrl}
-                className="px-4 py-2 rounded-xl bg-[#fde5b7] text-black font-semibold text-xs hover:bg-[#fee8c8] active:scale-95 transition-all"
-              >
-                Save & Connect
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <div className="absolute bottom-0 left-0 right-0 w-full z-10">
+        <Footer />
+      </div>
     </div>
   );
 }

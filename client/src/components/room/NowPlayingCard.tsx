@@ -360,10 +360,10 @@ export function NowPlayingCard({
               <button
                 type="button"
                 onClick={onOpenAdd}
-                className="btn btn-primary mt-1 h-9 border-cream/20 bg-cream px-4 text-xs text-ink hover:bg-linen"
+                className="btn btn-primary mt-1 h-9 border-cream/20 bg-cream px-4 text-xs text-ink hover:bg-linen font-semibold flex items-center gap-2"
               >
                 <Sparkles className="h-3.5 w-3.5" />
-                Add the first track
+                <span>Search Library & Add Track</span>
               </button>
             )}
           </div>
