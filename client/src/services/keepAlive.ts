@@ -15,6 +15,7 @@ class KeepAliveService {
   private audioCtx: AudioContext | null = null;
   private silentGain: GainNode | null = null;
   private silentOsc: OscillatorNode | null = null;
+  private bgAudio: HTMLAudioElement | null = null;
   private isActive = false;
   private roomCode: string | null = null;
 
@@ -77,6 +78,20 @@ class KeepAliveService {
    * and Android Chrome so WebSocket heartbeats and audio sync are never suspended.
    */
   private startSilentAudioThread(): void {
+    // 1. Silent HTML5 audio loop ensures iOS Safari & Android Chrome grant Background Media Playback
+    // and keep playing audio when the phone is closed or screen locked.
+    try {
+      if (!this.bgAudio) {
+        // 1-second inaudible silent WAV
+        const SILENT_WAV = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
+        this.bgAudio = new Audio(SILENT_WAV);
+        this.bgAudio.loop = true;
+        this.bgAudio.volume = 0.001;
+      }
+      this.bgAudio.play().catch(() => {});
+    } catch {}
+
+    // 2. WebAudio keep-alive thread
     try {
       const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
       if (!AudioContextClass) return;
@@ -106,6 +121,10 @@ class KeepAliveService {
 
   private stopSilentAudioThread(): void {
     try {
+      if (this.bgAudio) {
+        this.bgAudio.pause();
+        this.bgAudio = null;
+      }
       if (this.silentOsc) {
         this.silentOsc.stop();
         this.silentOsc.disconnect();
@@ -126,6 +145,10 @@ class KeepAliveService {
     if (document.visibilityState === 'visible') {
       // Tab restored to foreground!
       this.requestWakeLock();
+
+      if (this.bgAudio && this.bgAudio.paused) {
+        this.bgAudio.play().catch(() => {});
+      }
 
       if (this.audioCtx && this.audioCtx.state === 'suspended') {
         this.audioCtx.resume().catch(() => {});

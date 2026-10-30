@@ -646,7 +646,7 @@ export class RoomManager {
     const track = room.state.playback.currentTrack;
     const position = this.sync.positionAt(room.state.playback);
 
-    if (track && position > 3) {
+    if (track && position > 4 && room.state.queue.length > 1) {
       const restarted = this.sync.createState('playing', 0, track, 1);
       this.setPlayback(roomCode, restarted);
       return restarted;
@@ -700,8 +700,9 @@ export class RoomManager {
     } else {
       nextIndex = room.state.currentIndex + direction;
       if (nextIndex >= queue.length) {
-        if (settings.repeatMode === 'all') nextIndex = 0;
-        else {
+        if (!automatic || settings.repeatMode === 'all') {
+          nextIndex = 0;
+        } else {
           const last = room.state.playback.currentTrack;
           const stopped = this.sync.createState('paused', last?.duration || 0, last, 1);
           this.setPlayback(roomCode, stopped);
@@ -709,7 +710,7 @@ export class RoomManager {
         }
       }
       if (nextIndex < 0) {
-        nextIndex = settings.repeatMode === 'all' ? queue.length - 1 : 0;
+        nextIndex = queue.length - 1;
       }
     }
 

@@ -60,6 +60,7 @@ export function useMediaPlayer({
   const lastSeekTime = useRef(0);
   const previousStatus = useRef<string | null>(null);
   const previousTrackId = useRef<string | null>(null);
+  const smoothedDrift = useRef(0);
 
   // Tear down / build an adapter whenever the track changes.
   useEffect(() => {
@@ -68,6 +69,7 @@ export function useMediaPlayer({
     endedForTrack.current = null;
     reportedDuration.current = null;
     notPlayingTicks.current = 0;
+    smoothedDrift.current = 0;
     setCurrentTime(0);
     setMeasuredDuration(0);
     setDriftMs(0);
@@ -336,7 +338,12 @@ export function useMediaPlayer({
       void readPosition().then((position) => {
         if (disposed) return;
         const target = positionAt(active, clockSync.getServerNow());
-        const drift = position - target;
+        const rawDrift = position - target;
+
+        // Exponential smoothing filter:
+        // Dampens OS audio clock buffer fluctuations (~20-50ms) to eliminate rate oscillation/flutter.
+        smoothedDrift.current = 0.7 * smoothedDrift.current + 0.3 * rawDrift;
+        const drift = Math.abs(rawDrift) > 0.8 ? rawDrift : smoothedDrift.current;
         const driftMillis = Math.round(drift * 1000);
         setCurrentTime(position);
         setDriftMs(driftMillis);
@@ -361,29 +368,46 @@ export function useMediaPlayer({
             adapter.seek(target);
             lastSeekTime.current = Date.now();
             adapter.setRate(1);
-          } else if (absDrift > 0.1) {
+          } else if (absDrift > 0.12) {
             // Gentle 3% rate correction for smooth catch-up without frame drops
             adapter.setRate(drift < 0 ? 1.03 : 0.97);
           } else {
             adapter.setRate(1);
           }
         } else {
-          // Howler Audio / WebAudio:
-          // Never hard seek unless drift > 0.8s and sustained (prevents audio hitching/stuttering)
-          if (absDrift > 0.8 && timeSinceLastSeek > 3000) {
+          // Howler Audio / HTML5 Audio:
+          // Never hard seek unless drift > 1.2s and sustained (prevents audio hitching/stuttering)
+          if (absDrift > 1.2 && timeSinceLastSeek > 3000) {
             adapter.seek(target);
             lastSeekTime.current = Date.now();
             adapter.setRate(1);
-          } else if (absDrift > 0.15) {
-            // Moderate drift (150ms - 800ms): 4% catch-up rate (gains 40ms/sec smoothly)
-            adapter.setRate(drift < 0 ? 1.04 : 0.96);
-          } else if (absDrift > 0.03) {
-            // Micro drift (30ms - 150ms): 1.5% micro-trim (inaudible, seamless)
+          } else if (absDrift > 0.25) {
+            // Moderate drift (250ms - 1.2s): 3% catch-up rate (smooth, natural, pitch-preserved)
+            adapter.setRate(drift < 0 ? 1.03 : 0.97);
+          } else if (absDrift > 0.075) {
+            // Micro drift (75ms - 250ms): 1.5% micro-trim (virtually imperceptible)
             adapter.setRate(drift < 0 ? 1.015 : 0.985);
           } else {
-            // Within 30ms: perfect sync! Rate = 1.0
+            // Within 75ms: perfect sweet spot, locked at 1.0x with zero rate modulation
             adapter.setRate(1);
           }
+        }
+
+        // Keep mobile lockscreen position state up-to-date
+        if (
+          Math.random() < 0.15 &&
+          typeof navigator !== 'undefined' &&
+          'mediaSession' in navigator &&
+          'setPositionState' in navigator.mediaSession &&
+          duration > 0
+        ) {
+          try {
+            navigator.mediaSession.setPositionState({
+              duration: Math.max(0, duration),
+              playbackRate: 1,
+              position: Math.min(Math.max(0, position), duration),
+            });
+          } catch {}
         }
 
         if (adapter.isPlaying && !adapter.isPlaying()) {
@@ -486,6 +510,21 @@ export function useMediaPlayer({
       });
       navigator.mediaSession.setActionHandler('previoustrack', () => {
         socket.emit('playback:prev', { roomCode });
+      });
+      navigator.mediaSession.setActionHandler('seekto', (details) => {
+        if (details.seekTime !== undefined && details.seekTime !== null) {
+          socket.emit('playback:seek', { roomCode, position: details.seekTime });
+        }
+      });
+      navigator.mediaSession.setActionHandler('seekforward', (details) => {
+        const skip = details.seekOffset || 10;
+        const pos = adapterRef.current ? adapterRef.current.getTime() : 0;
+        socket.emit('playback:seek', { roomCode, position: pos + skip });
+      });
+      navigator.mediaSession.setActionHandler('seekbackward', (details) => {
+        const skip = details.seekOffset || 10;
+        const pos = adapterRef.current ? adapterRef.current.getTime() : 0;
+        socket.emit('playback:seek', { roomCode, position: Math.max(0, pos - skip) });
       });
     } catch {}
   }, [track, playback.status, roomCode]);

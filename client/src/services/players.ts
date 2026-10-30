@@ -42,7 +42,7 @@ export class HowlerAudioAdapter implements PlayerAdapter {
     this.onEndedCallback = onEnded;
     this.onErrorCallback = onError;
 
-    this.initHowl(false); // Prefer Web Audio API for sample-accurate instant seeks and zero latency
+    this.initHowl(true); // HTML5 Audio for reliable mobile lock-screen background playback and pitch preservation
   }
 
   private initHowl(useHtml5: boolean): void {
@@ -231,7 +231,9 @@ export class AudioAdapter implements PlayerAdapter {
   }
 
   public setRate(rate: number): void {
-    this.element.playbackRate = Math.max(0.9, Math.min(1.1, rate));
+    const target = Math.max(0.9, Math.min(1.1, rate));
+    if (Math.abs(this.element.playbackRate - target) < 0.005) return;
+    this.element.playbackRate = target;
   }
 
   public setVolume(volume: number): void {

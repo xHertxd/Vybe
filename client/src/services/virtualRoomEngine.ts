@@ -446,7 +446,7 @@ class VirtualRoomEngine {
         currentTrack: mediaItem,
         position: 0,
         serverTimestamp: now,
-        scheduledStartTime: now + 1000,
+        scheduledStartTime: null,
         playbackRate: 1,
         version: now,
       };
@@ -488,7 +488,7 @@ class VirtualRoomEngine {
       return true;
     }
 
-    if (event === 'playback:play_index') {
+    if (event === 'playback:play_index' || event === 'queue:play_index') {
       const roomCode = (payload.roomCode as string) || this.activeRoomCode;
       const index = typeof payload.index === 'number' ? payload.index : 0;
       if (!roomCode) return true;
@@ -502,7 +502,7 @@ class VirtualRoomEngine {
         currentTrack: state.queue[index],
         position: 0,
         serverTimestamp: now,
-        scheduledStartTime: now + 1000,
+        scheduledStartTime: null,
         playbackRate: 1,
         version: now,
       };
@@ -568,7 +568,7 @@ class VirtualRoomEngine {
           currentTrack: mediaItem,
           position: 0,
           serverTimestamp: now,
-          scheduledStartTime: now + 1000,
+          scheduledStartTime: null,
           playbackRate: 1,
           version: now,
         };
@@ -878,7 +878,7 @@ class VirtualRoomEngine {
       return true;
     }
 
-    if (event === 'playback:next' || (event === 'playback:skip' && payload.direction === 'next')) {
+    if (event === 'playback:next' || event === 'queue:next' || (event === 'playback:skip' && payload.direction === 'next')) {
       const roomCode = (payload.roomCode as string) || this.activeRoomCode;
       if (!roomCode) return true;
 
@@ -891,7 +891,7 @@ class VirtualRoomEngine {
         currentTrack: state.queue[state.currentIndex] || null,
         position: 0,
         serverTimestamp: now,
-        scheduledStartTime: now + 1000,
+        scheduledStartTime: null,
         playbackRate: 1,
         version: now,
       };
@@ -933,23 +933,42 @@ class VirtualRoomEngine {
       return true;
     }
 
-    if (event === 'playback:prev' || (event === 'playback:skip' && payload.direction === 'prev')) {
+    if (event === 'playback:prev' || event === 'queue:prev' || (event === 'playback:skip' && payload.direction === 'prev')) {
       const roomCode = (payload.roomCode as string) || this.activeRoomCode;
       if (!roomCode) return true;
 
       const state = this.getStoredRoom(roomCode) || this.currentRoomState;
       if (!state || state.queue.length === 0) return true;
 
-      state.currentIndex = (state.currentIndex - 1 + state.queue.length) % state.queue.length;
-      state.playback = {
-        status: 'playing',
-        currentTrack: state.queue[state.currentIndex] || null,
-        position: 0,
-        serverTimestamp: now,
-        scheduledStartTime: now + 1000,
-        playbackRate: 1,
-        version: now,
-      };
+      // Standard media player behavior: if playing > 4s, restart to 0:00; second tap jumps to previous track
+      const isPlaying = state.playback.status === 'playing';
+      const elapsed = isPlaying && state.playback.scheduledStartTime && now >= state.playback.scheduledStartTime
+        ? (now - state.playback.scheduledStartTime) / 1000
+        : 0;
+      const currentPos = Math.max(0, state.playback.position + elapsed);
+
+      if (currentPos > 4 && state.queue.length > 1) {
+        state.playback = {
+          status: 'playing',
+          currentTrack: state.queue[state.currentIndex] || null,
+          position: 0,
+          serverTimestamp: now,
+          scheduledStartTime: null,
+          playbackRate: 1,
+          version: now,
+        };
+      } else {
+        state.currentIndex = (state.currentIndex - 1 + state.queue.length) % state.queue.length;
+        state.playback = {
+          status: 'playing',
+          currentTrack: state.queue[state.currentIndex] || null,
+          position: 0,
+          serverTimestamp: now,
+          scheduledStartTime: null,
+          playbackRate: 1,
+          version: now,
+        };
+      }
       state.version = now;
       this.currentRoomState = state;
       this.saveRoom(state);
@@ -1002,7 +1021,7 @@ class VirtualRoomEngine {
         currentTrack: state.queue[state.currentIndex] || null,
         position: 0,
         serverTimestamp: now,
-        scheduledStartTime: now + 1000,
+        scheduledStartTime: null,
         playbackRate: 1,
         version: now,
       };
