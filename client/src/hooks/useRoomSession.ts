@@ -81,8 +81,7 @@ export function useRoomSession({ notify, onEntered, onLeft }: UseRoomSessionOpti
         return;
       }
       if (!socket.connected) {
-        notify('Still connecting', 'The live server is not reachable yet. Give it a second.', 'error');
-        return;
+        socket.connect();
       }
       saveUsername(username);
       setPhase('connecting');
@@ -109,8 +108,7 @@ export function useRoomSession({ notify, onEntered, onLeft }: UseRoomSessionOpti
         return;
       }
       if (!socket.connected) {
-        notify('Still connecting', 'The live server is not reachable yet. Give it a second.', 'error');
-        return;
+        socket.connect();
       }
 
       const existing = sessionRef.current;

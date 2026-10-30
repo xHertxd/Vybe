@@ -1,23 +1,7 @@
-import { useEffect, useState, type FormEvent } from 'react';
-import {
-  ArrowRight,
-  ArrowUpRight,
-  Headphones,
-  Loader2,
-  Lock,
-  Music2,
-  Radio,
-  ShieldCheck,
-  Users,
-  Video,
-  Zap,
-} from 'lucide-react';
-import { Brand } from '../components/Brand.js';
-import { AuroraBackground } from '../components/AuroraBackground.js';
+import { useEffect, useRef, useState } from 'react';
+import { Pencil, Check, AlertCircle, ArrowRight } from 'lucide-react';
 import { Footer } from '../components/Footer.js';
-import { cn } from '../lib/cn.js';
 import type { RoomPhase } from '../hooks/useRoomSession.js';
-import { waitForConnection } from '../services/socket.js';
 
 interface RoomEntryPageProps {
   onCreate: (username: string) => void;
@@ -28,10 +12,45 @@ interface RoomEntryPageProps {
   initialCode?: string;
 }
 
-type Mode = 'create' | 'join';
+const RANDOM_NAMES = [
+  'Echo',
+  'Nova',
+  'Zephyr',
+  'Solaris',
+  'Aura',
+  'Vesper',
+  'Zenith',
+  'Cosmo',
+  'Lyric',
+  'Rhythm',
+  'Drift',
+  'Pulse',
+  'Sonic',
+  'Astral',
+  'Mirage',
+  'Apex',
+  'Orbit',
+  'Helix',
+  'Haven',
+  'Blaze',
+  'Siren',
+  'Phantom',
+  'Kismet',
+  'Solstice',
+  'Vibe',
+  'Nexus',
+  'Echoes',
+  'Prism',
+  'Flux',
+  'Vortex',
+];
+
+function generateRandomUsername(): string {
+  const idx = Math.floor(Math.random() * RANDOM_NAMES.length);
+  return RANDOM_NAMES[idx];
+}
 
 const USERNAME_RE = /^[A-Za-z]{2,20}$/;
-const CODE_RE = /^\d{6}$/;
 
 export function RoomEntryPage({
   onCreate,
@@ -41,268 +60,250 @@ export function RoomEntryPage({
   initialUsername,
   initialCode,
 }: RoomEntryPageProps) {
-  const [mode, setMode] = useState<Mode>(initialCode ? 'join' : 'create');
-  const [username, setUsername] = useState(initialUsername);
-  const [code, setCode] = useState(initialCode ?? '');
+  // Generate random name automatically if not saved
+  const [username, setUsername] = useState<string>(() => {
+    return initialUsername && USERNAME_RE.test(initialUsername)
+      ? initialUsername
+      : generateRandomUsername();
+  });
+
+  const [isEditingUsername, setIsEditingUsername] = useState(false);
+  const [tempUsername, setTempUsername] = useState(username);
+  const [digits, setDigits] = useState<string[]>(() => {
+    if (initialCode && /^\d{6}$/.test(initialCode)) {
+      return initialCode.split('');
+    }
+    return ['', '', '', '', '', ''];
+  });
   const [error, setError] = useState<string | null>(null);
-  const [waitingForServer, setWaitingForServer] = useState(false);
-  const busy = phase === 'connecting' || waitingForServer;
+
+  const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const busy = phase === 'connecting';
 
   useEffect(() => {
-    if (initialCode) {
-      setCode(initialCode);
-      setMode('join');
+    if (initialCode && /^\d{6}$/.test(initialCode)) {
+      setDigits(initialCode.split(''));
     }
   }, [initialCode]);
 
-  const submit = async (event: FormEvent | { preventDefault: () => void }) => {
-    event.preventDefault();
+  const handleSaveUsername = () => {
+    const clean = tempUsername.trim();
+    if (!USERNAME_RE.test(clean)) {
+      setError('Username must be 2–20 alphabetic letters only (A–Z, a–z).');
+      return;
+    }
+    setUsername(clean);
+    setIsEditingUsername(false);
     setError(null);
+  };
 
-    const cleanName = username.trim();
-    if (!USERNAME_RE.test(cleanName)) {
-      setError('Usernames must be 2–20 letters, letters only.');
-      return;
-    }
-    if (mode === 'join' && !CODE_RE.test(code.trim())) {
-      setError('Enter the 6-digit room code.');
-      return;
-    }
+  const handleDigitChange = (index: number, val: string) => {
+    setError(null);
+    const numeric = val.replace(/\D/g, '');
 
-    if (!connected) {
-      setWaitingForServer(true);
-      const online = await waitForConnection(9_000);
-      setWaitingForServer(false);
-      if (!online) {
-        setError(
-          'Cannot reach the live server. Check that the backend is running and try again.'
-        );
-        return;
+    if (numeric.length <= 1) {
+      const newDigits = [...digits];
+      newDigits[index] = numeric;
+      setDigits(newDigits);
+
+      if (numeric && index < 5) {
+        inputRefs.current[index + 1]?.focus();
       }
     }
+  };
 
-    if (mode === 'create') onCreate(cleanName);
-    else onJoin(code.trim(), cleanName);
+  const handleKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Backspace' && !digits[index] && index > 0) {
+      inputRefs.current[index - 1]?.focus();
+    } else if (e.key === 'ArrowLeft' && index > 0) {
+      inputRefs.current[index - 1]?.focus();
+    } else if (e.key === 'ArrowRight' && index < 5) {
+      inputRefs.current[index + 1]?.focus();
+    }
+  };
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    e.preventDefault();
+    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
+    if (pasted.length > 0) {
+      const newDigits = [...digits];
+      for (let i = 0; i < 6; i++) {
+        newDigits[i] = pasted[i] || '';
+      }
+      setDigits(newDigits);
+      const nextIndex = Math.min(5, pasted.length);
+      inputRefs.current[nextIndex]?.focus();
+    }
+  };
+
+  const currentCode = digits.join('');
+  const isFullCode = currentCode.length === 6;
+
+  const handleCreate = () => {
+    setError(null);
+    const clean = username.trim();
+    if (!USERNAME_RE.test(clean)) {
+      setError('Username must be 2–20 letters only.');
+      setIsEditingUsername(true);
+      return;
+    }
+    onCreate(clean);
+  };
+
+  const handleJoin = () => {
+    setError(null);
+    const clean = username.trim();
+    if (!USERNAME_RE.test(clean)) {
+      setError('Username must be 2–20 letters only.');
+      setIsEditingUsername(true);
+      return;
+    }
+    if (!isFullCode) {
+      setError('Please enter all 6 digits of the room code.');
+      return;
+    }
+    onJoin(currentCode, clean);
   };
 
   return (
-    <div className="relative flex min-h-screen flex-col overflow-hidden">
-      <AuroraBackground />
+    <div className="relative min-h-screen w-full flex flex-col justify-between bg-[#171719] overflow-hidden text-[#fde5b7]">
+      {/* Top Header Banner matching exact user design */}
+      <div className="w-full flex items-start justify-between z-10">
+        <div className="bg-[#fde5b7] text-black px-10 sm:px-14 py-4 sm:py-5 rounded-br-[40px] sm:rounded-br-[56px] flex items-center shadow-lg">
+          <span className="font-brand text-4xl sm:text-5xl md:text-6xl tracking-tighter select-none">
+            VYBE
+          </span>
+        </div>
 
-      <header className="mx-auto flex w-full max-w-[1280px] items-center justify-between px-5 py-7 sm:px-8 lg:px-10">
-        <Brand showByline />
-        <span className="chip">
+        {/* Minimal live connection status */}
+        <div className="p-5 sm:p-7 flex items-center gap-2">
           <span
-            className={cn(
-              'h-1.5 w-1.5 rounded-full',
-              connected ? 'bg-forest' : 'bg-rust animate-pulse-soft'
-            )}
+            className={`w-2 h-2 rounded-full ${
+              connected ? 'bg-[#86efac]' : 'bg-[#f87171] animate-pulse'
+            }`}
           />
-          {connected ? 'Live' : 'Connecting'}
-        </span>
-      </header>
+          <span className="text-xs font-mono text-[#a8a29e]">
+            {connected ? 'Live' : 'Connecting...'}
+          </span>
+        </div>
+      </div>
 
-      <main className="mx-auto grid w-full max-w-[1280px] flex-1 items-center gap-14 px-5 pb-16 pt-4 sm:px-8 lg:grid-cols-[1.08fr_0.92fr] lg:gap-16 lg:px-10 lg:pt-6">
-        {/* ------------------------------------------------------------ hero -- */}
-        <section className="animate-rise">
-          <div className="inline-flex items-center gap-2 rounded-full border border-sand bg-cream px-3 py-1.5 text-[10px] font-medium uppercase tracking-[0.2em] text-taupe">
-            <Headphones className="h-3 w-3" />
-            Real-time listening rooms
-          </div>
-
-          <h1 className="font-display mt-7 text-[clamp(2.8rem,6.4vw,5.2rem)] font-semibold leading-[0.98] tracking-[-0.035em] text-ink">
-            One Beat.
-            <br />
-            <span className="italic text-slate">Every Device.</span>
-          </h1>
-
-          <p className="mt-6 max-w-lg text-[15px] leading-relaxed text-slate sm:text-base">
-            Create a room, share the code, and play YouTube, Spotify or your own audio on every
-            speaker at once. One person controls the session; everyone hears the same moment.
-          </p>
-
-          <div className="mt-9 grid max-w-lg grid-cols-2 gap-2.5 sm:grid-cols-3">
-            {[
-              { icon: Radio, label: 'Server-timed sync' },
-              { icon: Video, label: 'YouTube + Shorts' },
-              { icon: Music2, label: 'Spotify links' },
-              { icon: Users, label: 'Live presence' },
-              { icon: Zap, label: 'Instant rooms' },
-              { icon: ShieldCheck, label: 'Admin controls' },
-            ].map((feature) => (
-              <div
-                key={feature.label}
-                className="flex items-center gap-2 rounded-xl border border-sand/90 bg-cream px-3 py-2.5"
-              >
-                <feature.icon className="h-3.5 w-3.5 flex-none text-taupe" />
-                <span className="text-[11.5px] text-slate">{feature.label}</span>
-              </div>
+      {/* Main Center Container */}
+      <div className="my-auto w-full max-w-lg sm:max-w-xl px-4 py-8 z-10 flex flex-col items-center">
+        {/* The Card from user design */}
+        <div className="w-full bg-[#262629] rounded-[36px] sm:rounded-[44px] p-8 sm:p-12 shadow-2xl flex flex-col items-center border border-white/5">
+          {/* 6 Digit Input Boxes */}
+          <div
+            className="flex items-center justify-center gap-2.5 sm:gap-3.5 mb-8 w-full max-w-md"
+            onPaste={handlePaste}
+          >
+            {digits.map((digit, idx) => (
+              <input
+                key={idx}
+                ref={(el) => {
+                  inputRefs.current[idx] = el;
+                }}
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                maxLength={1}
+                value={digit}
+                onChange={(e) => handleDigitChange(idx, e.target.value)}
+                onKeyDown={(e) => handleKeyDown(idx, e)}
+                className="w-11 h-14 sm:w-14 sm:h-16 md:w-16 md:h-18 bg-[#fde5b7] text-black font-brand text-2xl sm:text-3xl md:text-4xl text-center rounded-xl sm:rounded-2xl focus:outline-none focus:ring-4 focus:ring-[#fde5b7]/50 shadow-md transition-all caret-transparent select-none cursor-text"
+              />
             ))}
           </div>
 
-          <div className="mt-10 hidden max-w-lg border-t border-sand pt-6 sm:block">
-            <p className="text-[11px] leading-relaxed text-taupe">
-              No accounts. No downloads. A private room lives at one six-digit code — playback is
-              scheduled and corrected continuously so nobody drifts behind.
-            </p>
-          </div>
-        </section>
-
-        {/* ------------------------------------------------------------ form -- */}
-        <section
-          className="animate-rise mx-auto w-full max-w-[460px] lg:mx-0"
-          style={{ animationDelay: '100ms' }}
-        >
-          <div className="panel rounded-[24px] p-5 sm:p-7">
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="font-display text-2xl font-semibold tracking-[-0.02em] text-ink">
-                {mode === 'create' ? 'Start a room' : 'Join a room'}
-              </h2>
-              <span className="text-[10px] uppercase tracking-[0.18em] text-taupe">
-                {mode === 'create' ? 'Admin' : 'Listener'}
-              </span>
-            </div>
-
-            <div className="mt-5 grid grid-cols-2 gap-1 rounded-xl border border-sand bg-paper p-1">
-              {(
-                [
-                  { id: 'create', label: 'Create' },
-                  { id: 'join', label: 'Join' },
-                ] as const
-              ).map((tab) => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => {
-                    setMode(tab.id);
-                    setError(null);
-                  }}
-                  className={cn(
-                    'rounded-lg px-3 py-2 text-xs font-medium transition-colors',
-                    mode === tab.id
-                      ? 'bg-cream text-ink shadow-[0_1px_2px_rgba(35,32,28,0.08)]'
-                      : 'text-taupe hover:text-graphite'
-                  )}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-
-            <form onSubmit={submit} className="mt-6 space-y-4">
-              {mode === 'join' && (
-                <div>
-                  <label
-                    htmlFor="room-code"
-                    className="mb-2 block text-[10px] font-medium uppercase tracking-[0.18em] text-taupe"
-                  >
-                    Room code
-                  </label>
-                  <input
-                    id="room-code"
-                    value={code}
-                    onChange={(event) => {
-                      setCode(event.target.value.replace(/\D/g, '').slice(0, 6));
-                      setError(null);
-                    }}
-                    inputMode="numeric"
-                    autoComplete="one-time-code"
-                    placeholder="000000"
-                    className="field code-field h-16"
-                    maxLength={6}
-                    aria-live="polite"
-                  />
-                </div>
-              )}
-
-              <div>
-                <label
-                  htmlFor="username"
-                  className="mb-2 block text-[10px] font-medium uppercase tracking-[0.18em] text-taupe"
-                >
-                  Your name
-                </label>
+          {/* Username Section: "You will join as username ✏️" */}
+          <div className="flex items-center justify-center mb-8 text-[#fde5b7] text-sm sm:text-base font-medium">
+            <span className="opacity-80 mr-1.5">You will join as</span>
+            {isEditingUsername ? (
+              <div className="flex items-center gap-1.5 bg-black/40 px-2.5 py-1 rounded-lg border border-[#fde5b7]/40">
                 <input
-                  id="username"
-                  value={username}
-                  onChange={(event) => {
-                    setUsername(event.target.value.replace(/[^A-Za-z]/g, '').slice(0, 20));
+                  type="text"
+                  autoFocus
+                  value={tempUsername}
+                  onChange={(e) => {
+                    const clean = e.target.value.replace(/[^a-zA-Z]/g, '');
+                    setTempUsername(clean);
                     setError(null);
                   }}
-                  autoComplete="nickname"
-                  placeholder="Letters only"
-                  className="field h-12"
-                  maxLength={20}
-                  autoFocus={mode === 'create'}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSaveUsername()}
+                  className="bg-transparent text-[#fde5b7] font-semibold text-sm sm:text-base focus:outline-none w-28 text-center"
+                  placeholder="name"
+                  maxLength={18}
                 />
-                <p className="mt-2 flex items-center gap-1.5 text-[11px] text-taupe">
-                  <Lock className="h-3 w-3" />
-                  2–20 letters. Unique inside the room.
-                </p>
+                <button
+                  type="button"
+                  onClick={handleSaveUsername}
+                  className="p-1 hover:text-white transition-colors"
+                  title="Save Username"
+                >
+                  <Check className="w-4 h-4 text-[#fde5b7]" />
+                </button>
               </div>
+            ) : (
+              <div
+                onClick={() => {
+                  setTempUsername(username);
+                  setIsEditingUsername(true);
+                }}
+                className="group flex items-center gap-1.5 cursor-pointer"
+                title="Click to edit username"
+              >
+                <span className="underline decoration-[#fde5b7]/50 underline-offset-4 font-semibold text-[#fde5b7] group-hover:text-white transition-colors">
+                  {username}
+                </span>
+                <Pencil className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#fde5b7] opacity-80 group-hover:opacity-100 group-hover:scale-110 transition-all" />
+              </div>
+            )}
+          </div>
 
-              {error && (
-                <div className="rounded-xl border border-rust/25 bg-rust/5 px-3.5 py-2.5 text-xs leading-relaxed text-rust">
-                  {error}
-                </div>
-              )}
+          {/* Error Feedback */}
+          {error && (
+            <div className="w-full mb-6 p-3 rounded-2xl bg-red-500/15 border border-red-500/30 flex items-start gap-2.5 text-xs text-red-200">
+              <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+              <div className="leading-relaxed">{error}</div>
+            </div>
+          )}
 
-              <button type="submit" disabled={busy} className="btn btn-primary h-12 w-full text-[13px]">
-                {busy ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    {waitingForServer ? 'Connecting to server…' : 'Opening room…'}
-                  </>
-                ) : mode === 'create' ? (
-                  <>
-                    Create room
-                    <ArrowRight className="h-4 w-4" />
-                  </>
-                ) : (
-                  <>
-                    Join the room
-                    <ArrowRight className="h-4 w-4" />
-                  </>
-                )}
+          {/* Action Button */}
+          {isFullCode ? (
+            <div className="w-full space-y-3 flex flex-col items-center">
+              <button
+                type="button"
+                onClick={handleJoin}
+                disabled={busy}
+                className="w-full max-w-xs py-3.5 px-8 rounded-full bg-[#1c1c1f] hover:bg-[#232327] active:scale-95 text-[#fde5b7] font-bebas text-2xl tracking-widest transition-all shadow-xl border border-white/5 flex items-center justify-center gap-2 hover:border-[#fde5b7]/30"
+              >
+                <span>JOIN ROOM</span>
+                <ArrowRight className="w-5 h-5 text-[#fde5b7]" />
               </button>
 
-              <p className="text-center text-[11px] leading-relaxed text-taupe">
-                {mode === 'create'
-                  ? 'You become the admin — playback, queue and settings are yours.'
-                  : 'A code that does not exist yet is created instantly.'}
-              </p>
-            </form>
-
-            <div className="mt-6 flex items-center justify-center gap-4 border-t border-sand pt-5 text-[10.5px] text-taupe">
-              <span className="flex items-center gap-1.5">
-                <ShieldCheck className="h-3.5 w-3.5" />
-                Admin-gated
-              </span>
-              <span className="h-3 w-px bg-sand" />
-              <span className="flex items-center gap-1.5">
-                <Zap className="h-3.5 w-3.5" />
-                Auto re-sync
-              </span>
-              <span className="h-3 w-px bg-sand" />
-              <span className="flex items-center gap-1.5">
-                <Users className="h-3.5 w-3.5" />
-                Up to 50
-              </span>
+              <button
+                type="button"
+                onClick={handleCreate}
+                disabled={busy}
+                className="text-xs text-[#a8a29e] hover:text-[#fde5b7] underline underline-offset-4 font-medium transition-colors"
+              >
+                or create a new room instead
+              </button>
             </div>
-          </div>
+          ) : (
+            <button
+              type="button"
+              onClick={handleCreate}
+              disabled={busy}
+              className="w-full max-w-xs py-3.5 px-8 rounded-full bg-[#1c1c1f] hover:bg-[#232327] active:scale-95 text-[#fde5b7] font-bebas text-2xl tracking-widest transition-all shadow-xl border border-white/5 flex items-center justify-center gap-2 hover:border-[#fde5b7]/30"
+            >
+              <span>CREATE NEW ROOM</span>
+            </button>
+          )}
+        </div>
+      </div>
 
-          <a
-            href="https://github.com/xHertxd"
-            target="_blank"
-            rel="noreferrer"
-            className="mt-4 flex items-center justify-center gap-1.5 text-[11px] text-taupe transition-colors hover:text-graphite"
-          >
-            Built and maintained by Hertx
-            <ArrowUpRight className="h-3 w-3" />
-          </a>
-        </section>
-      </main>
-
+      {/* Footer */}
       <Footer />
     </div>
   );
