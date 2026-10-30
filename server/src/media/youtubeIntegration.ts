@@ -406,20 +406,45 @@ export class YouTubeIntegration {
   }
 
   private async fetchDuration(videoId: string): Promise<number> {
-    if (!this.apiKey) return 0;
-    try {
-      const data = await this.fetchJson<{
-        items?: Array<{ contentDetails?: { duration?: string } }>;
-      }>(
-        `https://www.googleapis.com/youtube/v3/videos?part=contentDetails&id=${encodeURIComponent(
-          videoId
-        )}&key=${this.apiKey}`,
-        6_000
-      );
-      return isoDurationToSeconds(data.items?.[0]?.contentDetails?.duration);
-    } catch {
-      return 0;
+    if (this.apiKey) {
+      try {
+        const data = await this.fetchJson<{
+          items?: Array<{ contentDetails?: { duration?: string } }>;
+        }>(
+          `https://www.googleapis.com/youtube/v3/videos?part=contentDetails&id=${encodeURIComponent(
+            videoId
+          )}&key=${this.apiKey}`,
+          6_000
+        );
+        const sec = isoDurationToSeconds(data.items?.[0]?.contentDetails?.duration);
+        if (sec > 0) return sec;
+      } catch {
+        // Fall back to scraping
+      }
     }
+
+    try {
+      const response = await fetch(`https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`, {
+        headers: {
+          'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept-Language': 'en-US,en;q=0.9',
+        },
+        signal: AbortSignal.timeout(5_000),
+      });
+      if (response.ok) {
+        const html = await response.text();
+        const match = html.match(/"lengthSeconds":"(\d+)"/);
+        if (match?.[1]) {
+          const parsed = parseInt(match[1], 10);
+          if (Number.isFinite(parsed) && parsed > 0) return parsed;
+        }
+      }
+    } catch {
+      // ignore
+    }
+
+    return 0;
   }
 
   private async fetchJson<T>(url: string, timeoutMs: number): Promise<T> {

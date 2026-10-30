@@ -23,8 +23,8 @@ export const config = {
   allowedOrigins: listFromEnv('ALLOWED_ORIGINS'),
   clientUrl: process.env.CLIENT_URL || 'http://localhost:3000',
 
-  /** How long a dropped participant keeps their seat and username. */
-  disconnectGraceMs: intFromEnv('DISCONNECT_GRACE_MS', 25_000),
+  /** How long a dropped participant keeps their seat and username (30 minutes to prevent accidental room drops). */
+  disconnectGraceMs: intFromEnv('DISCONNECT_GRACE_MS', 30 * 60 * 1000),
   /** How far in the future play commands are scheduled, so every client can buffer. */
   scheduleDelayMs: intFromEnv('SYNC_SCHEDULE_DELAY_MS', 600),
   /** Authoritative resync snapshot interval. */

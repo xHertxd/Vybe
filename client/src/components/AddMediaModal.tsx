@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { Modal } from './Modal.js';
 import { cn } from '../lib/cn.js';
-import { socket } from '../services/socket.js';
+import { socket, getApiUrl } from '../services/socket.js';
 import {
   searchSongs,
   CURATED_TRACKS,
@@ -125,23 +125,48 @@ export function AddMediaModal({ open, onClose, notify }: AddMediaModalProps) {
   };
 
   // Upload audio
-  const handleFileSelect = (file: File) => {
+  const [isUploading, setIsUploading] = useState(false);
+
+  const handleFileSelect = async (file: File) => {
     if (!file) return;
     if (file.size > 50 * 1024 * 1024) {
       notify('File too large', 'Please select an audio file under 50 MB.', 'error');
       return;
     }
 
-    const objectUrl = URL.createObjectURL(file);
+    setIsUploading(true);
     const cleanTitle = file.name.replace(/\.[a-z0-9]+$/i, '');
 
+    try {
+      const formData = new FormData();
+      formData.append('audio', file);
+      const res = await fetch(getApiUrl('/api/upload'), {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (res.ok) {
+        const json = (await res.json()) as { success?: boolean; item?: MediaItemInput; fileUrl?: string };
+        if (json.success && json.item) {
+          setUploadedTrack(json.item);
+          notify('Audio uploaded', `"${json.item.title}" is ready to stream to all devices.`, 'success');
+          return;
+        }
+      }
+    } catch {
+      // Fallback to local preview
+    } finally {
+      setIsUploading(false);
+    }
+
+    const objectUrl = URL.createObjectURL(file);
     const item: MediaItemInput = {
       provider: 'audio',
       sourceType: 'upload',
       mediaId: `upload_${Date.now()}`,
       url: objectUrl,
       title: cleanTitle,
-      artist: 'Local Upload',
+      artist: 'Local Audio',
       thumbnail: '',
       duration: 180,
       isPlayable: true,
@@ -462,8 +487,17 @@ export function AddMediaModal({ open, onClose, notify }: AddMediaModalProps) {
                 <div className="w-12 h-12 rounded-2xl bg-[#262629] grid place-items-center text-[#fde5b7] mb-3">
                   <UploadCloud className="w-6 h-6" />
                 </div>
-                <p className="text-sm font-semibold text-white">Click or drag audio file here</p>
-                <p className="text-xs text-[#a8a29e] mt-1">Supports MP3, WAV, AAC, M4A up to 50MB</p>
+                {isUploading ? (
+                  <div className="flex flex-col items-center gap-2">
+                    <Loader2 className="w-8 h-8 text-[#40E0D0] animate-spin" />
+                    <p className="text-sm font-semibold text-[#fde5b7]">Uploading to room for all devices...</p>
+                  </div>
+                ) : (
+                  <>
+                    <p className="text-sm font-semibold text-white">Click or drag audio file here</p>
+                    <p className="text-xs text-[#a8a29e] mt-1">Supports MP3, WAV, AAC, M4A up to 50MB</p>
+                  </>
+                )}
               </div>
 
               {uploadedTrack && (

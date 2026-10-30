@@ -103,8 +103,8 @@ export function createVybeServer() {
       origin: allowedOrigin,
       methods: ['GET', 'POST'],
     },
-    pingInterval: 10_000,
-    pingTimeout: 8_000,
+    pingInterval: 25_000,
+    pingTimeout: 60_000,
     maxHttpBufferSize: 1e6,
     path: process.env.SOCKET_PATH || '/socket.io',
   });

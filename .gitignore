@@ -26,3 +26,7 @@ Thumbs.db
 uploads/*
 !uploads/.gitkeep
 
+# Scratch and temporary scripts
+scratch/
+
+

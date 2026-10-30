@@ -2,6 +2,68 @@ import type { MediaItemInput } from '../types.js';
 import { getApiUrl } from './socket.js';
 
 export const CURATED_TRACKS: MediaItemInput[] = [
+  // --- Vybe Native Audio Tracks (100% Direct HTML5 Audio - Instant start, zero ads, zero iframe) ---
+  {
+    provider: 'audio',
+    sourceType: 'track',
+    mediaId: 'helix_1',
+    url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3',
+    title: 'SoundHelix Symphony No. 1',
+    artist: 'SoundHelix Electro',
+    album: 'Vybe Audio Sessions',
+    thumbnail: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=600&auto=format&fit=crop&q=80',
+    duration: 372,
+    isPlayable: true,
+  },
+  {
+    provider: 'audio',
+    sourceType: 'track',
+    mediaId: 'helix_2',
+    url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3',
+    title: 'Neon Odyssey',
+    artist: 'SoundHelix Synthwave',
+    album: 'Vybe Audio Sessions',
+    thumbnail: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=600&auto=format&fit=crop&q=80',
+    duration: 425,
+    isPlayable: true,
+  },
+  {
+    provider: 'audio',
+    sourceType: 'track',
+    mediaId: 'helix_3',
+    url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3',
+    title: 'Midnight Horizon',
+    artist: 'SoundHelix Chill',
+    album: 'Vybe Audio Sessions',
+    thumbnail: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=600&auto=format&fit=crop&q=80',
+    duration: 344,
+    isPlayable: true,
+  },
+  {
+    provider: 'audio',
+    sourceType: 'url',
+    mediaId: 'somafm_groovesalad',
+    url: 'https://ice6.somafm.com/groovesalad-128-mp3',
+    title: 'Groove Salad (24/7 Live Ambient)',
+    artist: 'SomaFM Lounge',
+    album: 'Live Audio Stream',
+    thumbnail: 'https://images.unsplash.com/photo-1518609878373-06d740f60d8b?w=600&auto=format&fit=crop&q=80',
+    duration: 0,
+    isPlayable: true,
+  },
+  {
+    provider: 'audio',
+    sourceType: 'url',
+    mediaId: 'somafm_defcon',
+    url: 'https://ice4.somafm.com/defcon-128-mp3',
+    title: 'DefCon Underground (24/7 Electronic)',
+    artist: 'SomaFM Beats',
+    album: 'Live Audio Stream',
+    thumbnail: 'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=600&auto=format&fit=crop&q=80',
+    duration: 0,
+    isPlayable: true,
+  },
+
   // Full-length YouTube Tracks (Plays complete full songs without 30s limit)
   {
     provider: 'youtube',
@@ -270,13 +332,31 @@ export function extractSpotifyId(url: string): string | null {
 export async function resolveDirectMedia(input: string): Promise<MediaItemInput> {
   const clean = input.trim();
 
+  // 1. Try backend resolver first (fetches real duration, high-res metadata)
+  try {
+    const res = await fetch(getApiUrl('/api/resolve-media'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: clean }),
+      signal: AbortSignal.timeout(6000),
+    });
+    if (res.ok) {
+      const data = (await res.json()) as { success?: boolean; data?: { items?: MediaItemInput[] } };
+      if (data.success && data.data?.items?.[0]) {
+        return data.data.items[0];
+      }
+    }
+  } catch {
+    // Continue to client fallback
+  }
+
   // YouTube direct link
   const ytId = extractYouTubeId(clean);
   if (ytId) {
     let title = 'YouTube Track';
     let artist = 'YouTube';
     let thumbnail = `https://img.youtube.com/vi/${ytId}/hqdefault.jpg`;
-    let duration = 210;
+    let duration = 0; // Set to 0 so player measures and sets exact duration immediately!
 
     try {
       const res = await fetch(

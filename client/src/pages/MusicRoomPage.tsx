@@ -48,7 +48,7 @@ export function MusicRoomPage({
   const [copiedCode, setCopiedCode] = useState(false);
   const [theater, setTheater] = useState(() => localStorage.getItem(THEATER_KEY) === '1');
   const [youtubeMode, setYouTubeMode] = useState<'video' | 'audio'>(
-    () => (localStorage.getItem(YOUTUBE_MODE_KEY) === 'audio' ? 'audio' : 'video')
+    () => (localStorage.getItem(YOUTUBE_MODE_KEY) === 'video' ? 'video' : 'audio')
   );
   const [volume, setVolume] = useState(() => {
     const stored = Number(localStorage.getItem(VOLUME_KEY));

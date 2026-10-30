@@ -39,10 +39,10 @@ const rawSocket: Socket | null = SERVER_URL
   ? io(SERVER_URL, {
       autoConnect: true,
       reconnection: true,
-      reconnectionAttempts: 5,
-      reconnectionDelay: 2000,
-      reconnectionDelayMax: 10000,
-      timeout: 6000,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      timeout: 20000,
       transports: ['websocket', 'polling'],
     })
   : null;

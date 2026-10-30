@@ -53,14 +53,20 @@ function unlockAudio(): void {
     const AudioContextClass =
       window.AudioContext ||
       (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    if (!AudioContextClass) return;
-    const ctx = new AudioContextClass();
-    const buf = ctx.createBuffer(1, 1, 22050);
-    const src = ctx.createBufferSource();
-    src.buffer = buf;
-    src.connect(ctx.destination);
-    src.start(0);
-    if (ctx.state === 'suspended') void ctx.resume();
+    if (AudioContextClass) {
+      const ctx = new AudioContextClass();
+      const buf = ctx.createBuffer(1, 1, 22050);
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.connect(ctx.destination);
+      src.start(0);
+      if (ctx.state === 'suspended') void ctx.resume();
+    }
+
+    // Prime HTML5 audio tag within this user gesture so joiners start playing immediately
+    const silent = new Audio('data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==');
+    silent.volume = 0.01;
+    void silent.play().catch(() => {});
   } catch {
     // ignore
   }

@@ -361,19 +361,20 @@ export function useMediaPlayer({
 
         if (
           track.provider === 'youtube' &&
-          track.duration <= 0 &&
           adapter instanceof YouTubeAdapter &&
           reportedDuration.current !== track.id
         ) {
-          const measured = adapter.getDuration();
-          if (measured > 0) {
+          const measured = Math.round(adapter.getDuration());
+          if (measured > 5) {
             reportedDuration.current = track.id;
             setMeasuredDuration(measured);
-            socket.emit('media:duration', {
-              roomCode,
-              itemId: track.id,
-              duration: measured,
-            });
+            if (Math.abs(measured - (track.duration || 0)) > 2) {
+              socket.emit('media:duration', {
+                roomCode,
+                itemId: track.id,
+                duration: measured,
+              });
+            }
           }
         }
 
