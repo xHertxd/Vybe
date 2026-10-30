@@ -395,6 +395,38 @@ export class RoomManager {
     this.closeRoom(roomCode, 'ended');
   }
 
+  public transferAdmin(roomCode: string, requesterUserId: string, targetUserId: string): RoomUser {
+    const room = this.rooms.get(roomCode);
+    if (!room) throw new RoomError('That room is no longer active.', 'NOT_FOUND');
+    if (!this.isAdmin(roomCode, requesterUserId)) {
+      throw new RoomError('Only the current admin can transfer host privileges.', 'FORBIDDEN');
+    }
+    const target = room.state.users.find((u) => u.id === targetUserId);
+    if (!target) throw new RoomError('Target user is not in the room.', 'NOT_FOUND');
+
+    room.state.users.forEach((u) => {
+      u.isAdmin = u.id === targetUserId;
+    });
+    room.state.adminId = targetUserId;
+    room.state.version = Date.now();
+    this.publishRoom(roomCode);
+    const publicTarget = this.toPublicUser(target);
+    this.hooks.adminChanged?.(roomCode, publicTarget);
+    return publicTarget;
+  }
+
+  public kickUser(roomCode: string, requesterUserId: string, targetUserId: string): { remainingUsers: RoomUser[] } {
+    const room = this.rooms.get(roomCode);
+    if (!room) throw new RoomError('That room is no longer active.', 'NOT_FOUND');
+    if (!this.isAdmin(roomCode, requesterUserId)) {
+      throw new RoomError('Only the admin can kick members.', 'FORBIDDEN');
+    }
+    if (requesterUserId === targetUserId) {
+      throw new RoomError('Admin cannot kick themselves.', 'VALIDATION');
+    }
+    return this.leaveRoom(roomCode, targetUserId);
+  }
+
   public closeRoom(roomCode: string, reason: 'empty' | 'ended' | 'expired'): void {
     const room = this.rooms.get(roomCode);
     if (!room) return;

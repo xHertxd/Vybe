@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Check,
   ChevronDown,
@@ -14,6 +14,8 @@ import {
   Video,
   Wifi,
   WifiOff,
+  UserMinus,
+  MoreVertical,
 } from 'lucide-react';
 import type { RoomState, RoomUser } from '../../types.js';
 import { cn } from '../../lib/cn.js';
@@ -58,6 +60,26 @@ export function SidePanel({
 }: SidePanelProps) {
   const [tab, setTab] = useState<Tab>('queue');
   const [copied, setCopied] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{
+    userId: string;
+    username: string;
+    x: number;
+    y: number;
+  } | null>(null);
+
+  useEffect(() => {
+    const handleClose = () => setContextMenu(null);
+    if (contextMenu) {
+      window.addEventListener('click', handleClose);
+      window.addEventListener('contextmenu', handleClose);
+      window.addEventListener('scroll', handleClose, true);
+    }
+    return () => {
+      window.removeEventListener('click', handleClose);
+      window.removeEventListener('contextmenu', handleClose);
+      window.removeEventListener('scroll', handleClose, true);
+    };
+  }, [contextMenu]);
 
   const copyCode = async () => {
     try {
@@ -327,8 +349,19 @@ export function SidePanel({
               return (
                 <li
                   key={user.id}
+                  onContextMenu={(e) => {
+                    if (isAdmin && !isYou) {
+                      e.preventDefault();
+                      setContextMenu({
+                        userId: user.id,
+                        username: user.username,
+                        x: Math.min(window.innerWidth - 200, e.clientX),
+                        y: Math.min(window.innerHeight - 130, e.clientY),
+                      });
+                    }
+                  }}
                   className={cn(
-                    'flex items-center gap-2.5 rounded-lg border px-2 py-2',
+                    'group relative flex items-center gap-2.5 rounded-lg border px-2 py-2 transition-colors select-none',
                     isYou ? 'border-sand bg-paper' : 'border-transparent hover:bg-paper/70'
                   )}
                 >
@@ -353,7 +386,7 @@ export function SidePanel({
                     <div className="flex items-center gap-1.5">
                       <p className="truncate text-[12px] font-medium text-graphite">{user.username}</p>
                       {isYou && <span className="text-[9px] text-taupe">You</span>}
-                      {user.isAdmin && <Crown className="h-3 w-3 text-taupe" />}
+                      {user.isAdmin && <Crown className="h-3 w-3 text-[#fde5b7]" />}
                     </div>
                     <p className="flex items-center gap-1 text-[9.5px] text-taupe">
                       {user.isOnline ? (
@@ -373,11 +406,28 @@ export function SidePanel({
                       )}
                     </p>
                   </div>
-                  {user.isAdmin && (
+                  {user.isAdmin ? (
                     <span className="chip py-0.5 text-[8px] uppercase tracking-wider text-taupe">
                       Admin
                     </span>
-                  )}
+                  ) : isAdmin && !isYou ? (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setContextMenu({
+                          userId: user.id,
+                          username: user.username,
+                          x: Math.min(window.innerWidth - 200, e.clientX),
+                          y: Math.min(window.innerHeight - 130, e.clientY),
+                        });
+                      }}
+                      className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-white/10 text-taupe hover:text-white transition-all"
+                      title="Manage listener (Right click also works)"
+                    >
+                      <MoreVertical className="h-3.5 w-3.5" />
+                    </button>
+                  ) : null}
                 </li>
               );
             })}
@@ -390,6 +440,49 @@ export function SidePanel({
               immediately.
             </p>
           </div>
+        </div>
+      )}
+
+      {/* Admin Right-Click Context Menu */}
+      {contextMenu && (
+        <div
+          style={{ top: contextMenu.y, left: contextMenu.x }}
+          className="fixed z-50 w-48 rounded-2xl border border-white/10 bg-[#212124] p-1.5 shadow-2xl text-[#fde5b7]"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="px-3 py-1.5 border-b border-white/5 mb-1 text-[11px] font-semibold text-[#a8a29e] truncate">
+            {contextMenu.username}
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              socket.emit('room:make_admin', {
+                roomCode: room.roomCode,
+                targetUserId: contextMenu.userId,
+              });
+              notify('Host changed', `${contextMenu.username} is now the room admin.`, 'success');
+              setContextMenu(null);
+            }}
+            className="w-full flex items-center gap-2 px-2.5 py-2 text-xs font-medium rounded-xl hover:bg-white/5 hover:text-white transition-colors"
+          >
+            <Crown className="w-3.5 h-3.5 text-[#fde5b7]" />
+            <span>Make Admin</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              socket.emit('room:kick', {
+                roomCode: room.roomCode,
+                targetUserId: contextMenu.userId,
+              });
+              notify('Removed', `${contextMenu.username} was kicked from the room.`, 'error');
+              setContextMenu(null);
+            }}
+            className="w-full flex items-center gap-2 px-2.5 py-2 text-xs font-medium rounded-xl text-red-400 hover:bg-red-500/10 transition-colors"
+          >
+            <UserMinus className="w-3.5 h-3.5" />
+            <span>Kick from Room</span>
+          </button>
         </div>
       )}
     </aside>

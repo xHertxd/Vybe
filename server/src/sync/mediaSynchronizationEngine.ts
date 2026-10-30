@@ -8,7 +8,7 @@ import type { MediaItem, PlaybackState, PlaybackStatus } from '../types.js';
  * also broadcast so clients can buffer and then all start together.
  */
 export class MediaSynchronizationEngine {
-  constructor(private readonly scheduleDelayMs: number = 600) {}
+  constructor(private readonly scheduleDelayMs: number = 1000) {}
 
   public createState(
     status: PlaybackStatus,

@@ -113,7 +113,21 @@ export function useMediaPlayer({
       const host = youtubeHostRef.current;
       if (!host) return;
 
-      createYouTubeAdapter(host, track.mediaId)
+      createYouTubeAdapter(
+        host,
+        track.mediaId,
+        () => {
+          setPhase('ready');
+          setAdapterTick((tick) => tick + 1);
+        },
+        () => {
+          if (endedForTrack.current !== track.id) {
+            endedForTrack.current = track.id;
+            socket.emit('track:ended', { roomCode, trackId: track.id });
+            socket.emit('playback:track_ended', { roomCode, trackId: track.id });
+          }
+        }
+      )
         .then((adapter) => {
           if (cancelled) {
             adapter.destroy();
@@ -197,9 +211,6 @@ export function useMediaPlayer({
             activeAdapter.seek(target);
             setCurrentTime(target);
             startTimer.current = setTimeout(() => {
-              const current = playbackRef.current;
-              const delayed = positionAt(current, clockSync.getServerNow());
-              adapterRef.current?.seek(delayed);
               adapterRef.current?.setRate(1);
               void Promise.resolve(adapterRef.current?.play()).catch(() => {
                 setPhase('needs-interaction');
@@ -274,13 +285,27 @@ export function useMediaPlayer({
           return;
         }
 
-        if (Math.abs(drift) > 1.2) {
-          adapter.seek(target);
-          adapter.setRate(1);
-        } else if (Math.abs(drift) > 0.26) {
-          adapter.setRate(drift < 0 ? 1.03 : 0.97);
+        const absDrift = Math.abs(drift);
+        const isYouTube = adapter instanceof YouTubeAdapter;
+
+        if (isYouTube) {
+          // YouTube does not support micro playback rates, snap precisely
+          if (absDrift > 0.15) {
+            adapter.seek(target);
+            adapter.setRate(1);
+          } else {
+            adapter.setRate(1);
+          }
         } else {
-          adapter.setRate(1);
+          // HTML5 Audio supports dynamic smooth rate correction without audible hitch
+          if (absDrift > 0.20) {
+            adapter.seek(target);
+            adapter.setRate(1);
+          } else if (absDrift > 0.04) {
+            adapter.setRate(drift < 0 ? 1.05 : 0.95);
+          } else {
+            adapter.setRate(1);
+          }
         }
 
         if (adapter.isPlaying && !adapter.isPlaying()) {
@@ -323,7 +348,7 @@ export function useMediaPlayer({
           });
         }
       });
-    }, 850);
+    }, 350);
 
     return () => {
       disposed = true;

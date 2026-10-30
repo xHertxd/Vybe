@@ -187,14 +187,34 @@ export class YouTubeAdapter implements PlayerAdapter {
   private errorMessage: string | null = null;
   private volume = 85;
   private readonly player: YTPlayer;
+  private readonly onReadyCallback?: () => void;
+  private readonly onEndedCallback?: () => void;
 
-  constructor(player: YTPlayer) {
+  constructor(
+    player: YTPlayer,
+    onReadyCallback?: () => void,
+    onEndedCallback?: () => void
+  ) {
     this.player = player;
-    this.player.setVolume(this.volume);
+    this.onReadyCallback = onReadyCallback;
+    this.onEndedCallback = onEndedCallback;
   }
 
   public markReady(): void {
+    if (this.ready) return;
     this.ready = true;
+    try {
+      if (typeof this.player?.setVolume === 'function') {
+        this.player.setVolume(this.volume);
+      }
+    } catch {
+      // ignore
+    }
+    this.onReadyCallback?.();
+  }
+
+  public markEnded(): void {
+    this.onEndedCallback?.();
   }
 
   public setError(message: string): void {
@@ -210,42 +230,94 @@ export class YouTubeAdapter implements PlayerAdapter {
   }
 
   public getTime(): number {
-    return this.player.getCurrentTime() || 0;
+    try {
+      if (typeof this.player?.getCurrentTime === 'function') {
+        return this.player.getCurrentTime() || 0;
+      }
+    } catch {
+      // ignore
+    }
+    return 0;
   }
 
   public getDuration(): number {
-    return this.player.getDuration() || 0;
+    try {
+      if (typeof this.player?.getDuration === 'function') {
+        return this.player.getDuration() || 0;
+      }
+    } catch {
+      // ignore
+    }
+    return 0;
   }
 
   public isPlaying(): boolean {
-    if (!window.YT) return false;
-    return this.player.getPlayerState() === window.YT.PlayerState.PLAYING;
+    try {
+      if (window.YT && typeof this.player?.getPlayerState === 'function') {
+        return this.player.getPlayerState() === window.YT.PlayerState.PLAYING;
+      }
+    } catch {
+      // ignore
+    }
+    return false;
   }
 
   public play(): void {
-    this.player.playVideo();
+    try {
+      if (typeof this.player?.playVideo === 'function') {
+        this.player.playVideo();
+      }
+    } catch {
+      // ignore
+    }
   }
 
   public pause(): void {
-    this.player.pauseVideo();
+    try {
+      if (typeof this.player?.pauseVideo === 'function') {
+        this.player.pauseVideo();
+      }
+    } catch {
+      // ignore
+    }
   }
 
   public seek(seconds: number): void {
-    this.player.seekTo(Math.max(0, seconds), true);
+    try {
+      if (typeof this.player?.seekTo === 'function') {
+        this.player.seekTo(Math.max(0, seconds), true);
+      }
+    } catch {
+      // ignore
+    }
   }
 
   public setRate(rate: number): void {
-    this.player.setPlaybackRate(rate);
+    try {
+      if (typeof this.player?.setPlaybackRate === 'function') {
+        this.player.setPlaybackRate(rate);
+      }
+    } catch {
+      // ignore
+    }
   }
 
   public setVolume(volume: number): void {
     this.volume = Math.max(0, Math.min(1, volume)) * 100;
-    this.player.setVolume(this.volume);
+    try {
+      if (typeof this.player?.setVolume === 'function') {
+        this.player.setVolume(this.volume);
+      }
+    } catch {
+      // ignore
+    }
   }
 
   public destroy(): void {
     try {
-      this.player.destroy();
+      if (typeof this.player?.destroy === 'function') {
+        this.player.destroy();
+      }
     } catch {
       // The iframe may already be gone during navigation.
     }
@@ -254,7 +326,9 @@ export class YouTubeAdapter implements PlayerAdapter {
 
 export function createYouTubeAdapter(
   host: HTMLElement,
-  videoId: string
+  videoId: string,
+  onReadyCallback?: () => void,
+  onEndedCallback?: () => void
 ): Promise<YouTubeAdapter> {
   return loadYouTubeApi().then(
     (YT) =>
@@ -264,7 +338,7 @@ export function createYouTubeAdapter(
         host.replaceChildren(mount);
 
         let settled = false;
-        const adapterRef: { current: YouTubeAdapter | null } = { current: null };
+        let adapter: YouTubeAdapter | null = null;
 
         const player = new YT.Player(mount, {
           videoId,
@@ -278,22 +352,30 @@ export function createYouTubeAdapter(
             playsinline: 1,
             modestbranding: 1,
             rel: 0,
+            enablejsapi: 1,
             iv_load_policy: 3,
             origin: window.location.origin,
           },
           events: {
             onReady: () => {
-              adapterRef.current?.markReady();
-              if (!settled) {
+              if (adapter) {
+                adapter.markReady();
+              }
+              if (!settled && adapter) {
                 settled = true;
-                resolve(adapterRef.current!);
+                resolve(adapter);
+              }
+            },
+            onStateChange: (event) => {
+              if (event.data === 0) { // 0 = YT.PlayerState.ENDED
+                adapter?.markEnded();
               }
             },
             onError: (event) => {
               const message =
                 YOUTUBE_ERRORS[event.data] ||
                 'This YouTube video could not play inside Vybe. Open it on YouTube instead.';
-              adapterRef.current?.setError(message);
+              adapter?.setError(message);
               if (!settled) {
                 settled = true;
                 reject(new Error(message));
@@ -302,16 +384,15 @@ export function createYouTubeAdapter(
           },
         });
 
-        const adapter = new YouTubeAdapter(player);
-        adapterRef.current = adapter;
+        adapter = new YouTubeAdapter(player, onReadyCallback, onEndedCallback);
 
         window.setTimeout(() => {
-          adapter.markReady();
-          if (!settled) {
+          if (!settled && adapter) {
             settled = true;
+            adapter.markReady();
             resolve(adapter);
           }
-        }, 4_000);
+        }, 3_500);
       })
   );
 }

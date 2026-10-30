@@ -302,19 +302,19 @@ class VirtualRoomEngine {
       let isAdmin = false;
 
       if (!state) {
-        // If not found yet, create temporary join state and proactively request from peers
-        isAdmin = false;
+        // If not found yet, create new room with this code and make user admin
+        isAdmin = true;
         const user: RoomUser = {
           id: this.currentUserId,
           username,
-          isAdmin: false,
+          isAdmin: true,
           isOnline: true,
           ping: 2,
           drift: 0,
         };
         state = {
           roomCode,
-          adminId: 'pending_host',
+          adminId: this.currentUserId,
           createdAt: now,
           playback: {
             status: 'stopped',
@@ -426,7 +426,7 @@ class VirtualRoomEngine {
         currentTrack: mediaItem,
         position: 0,
         serverTimestamp: now,
-        scheduledStartTime: now + 250,
+        scheduledStartTime: now + 1000,
         playbackRate: 1,
         version: now,
       };
@@ -454,7 +454,7 @@ class VirtualRoomEngine {
         currentTrack: state.queue[index],
         position: 0,
         serverTimestamp: now,
-        scheduledStartTime: now + 250,
+        scheduledStartTime: now + 1000,
         playbackRate: 1,
         version: now,
       };
@@ -492,7 +492,7 @@ class VirtualRoomEngine {
           currentTrack: mediaItem,
           position: 0,
           serverTimestamp: now,
-          scheduledStartTime: now + 250,
+          scheduledStartTime: now + 1000,
           playbackRate: 1,
           version: now,
         };
@@ -583,7 +583,7 @@ class VirtualRoomEngine {
 
       state.playback.status = 'playing';
       state.playback.serverTimestamp = now;
-      state.playback.scheduledStartTime = now + 250;
+      state.playback.scheduledStartTime = now + 1000;
       state.version = now;
       this.currentRoomState = state;
       this.saveRoom(state);
@@ -623,7 +623,7 @@ class VirtualRoomEngine {
       const position = typeof payload.position === 'number' ? payload.position : 0;
       state.playback.position = position;
       state.playback.serverTimestamp = now;
-      state.playback.scheduledStartTime = now + 250;
+      state.playback.scheduledStartTime = now + 1000;
       state.version = now;
       this.currentRoomState = state;
       this.saveRoom(state);
@@ -646,7 +646,7 @@ class VirtualRoomEngine {
         currentTrack: state.queue[state.currentIndex] || null,
         position: 0,
         serverTimestamp: now,
-        scheduledStartTime: now + 250,
+        scheduledStartTime: now + 1000,
         playbackRate: 1,
         version: now,
       };
@@ -673,7 +673,7 @@ class VirtualRoomEngine {
         currentTrack: state.queue[state.currentIndex] || null,
         position: 0,
         serverTimestamp: now,
-        scheduledStartTime: now + 250,
+        scheduledStartTime: now + 1000,
         playbackRate: 1,
         version: now,
       };
@@ -701,7 +701,7 @@ class VirtualRoomEngine {
         currentTrack: state.queue[state.currentIndex] || null,
         position: 0,
         serverTimestamp: now,
-        scheduledStartTime: now + 250,
+        scheduledStartTime: now + 1000,
         playbackRate: 1,
         version: now,
       };
@@ -730,6 +730,53 @@ class VirtualRoomEngine {
 
       this.emit('room:state', state);
       this.broadcast('sync_state', state);
+      return true;
+    }
+
+    if (event === 'room:make_admin') {
+      const roomCode = (payload.roomCode as string) || this.activeRoomCode;
+      const targetUserId = payload.targetUserId as string;
+      if (!roomCode || !targetUserId) return true;
+
+      const state = this.getStoredRoom(roomCode) || this.currentRoomState;
+      if (!state) return true;
+
+      state.users.forEach((u) => {
+        u.isAdmin = u.id === targetUserId;
+      });
+      state.adminId = targetUserId;
+      state.version = now;
+      this.currentRoomState = state;
+      this.saveRoom(state);
+
+      const newAdmin = state.users.find((u) => u.id === targetUserId);
+      if (newAdmin) {
+        this.emit('admin:changed', newAdmin);
+      }
+      this.emit('room:state', state);
+      this.broadcast('sync_state', state);
+      return true;
+    }
+
+    if (event === 'room:kick') {
+      const roomCode = (payload.roomCode as string) || this.activeRoomCode;
+      const targetUserId = payload.targetUserId as string;
+      if (!roomCode || !targetUserId) return true;
+
+      const state = this.getStoredRoom(roomCode) || this.currentRoomState;
+      if (!state) return true;
+
+      const idx = state.users.findIndex((u) => u.id === targetUserId);
+      if (idx !== -1) {
+        state.users.splice(idx, 1);
+        state.version = now;
+        this.currentRoomState = state;
+        this.saveRoom(state);
+
+        this.emit('room:kicked', { targetUserId, reason: 'You were kicked from the room by the host.' });
+        this.emit('room:state', state);
+        this.broadcast('sync_state', state);
+      }
       return true;
     }
 

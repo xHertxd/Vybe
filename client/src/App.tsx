@@ -11,8 +11,24 @@ import type { ToastMessage } from './types.js';
 type Tone = 'info' | 'success' | 'error';
 
 function parseRoomPath(): string | null {
-  const match = window.location.pathname.match(/^\/room\/(\d{6})\/?$/);
-  return match ? match[1] : null;
+  if (typeof window === 'undefined') return null;
+
+  // 1. Check search params: ?room=123456 or ?code=123456
+  const params = new URLSearchParams(window.location.search);
+  const fromQuery = params.get('room') || params.get('code');
+  if (fromQuery && /^\d{6}$/.test(fromQuery.trim())) {
+    return fromQuery.trim();
+  }
+
+  // 2. Check pathname: /room/123456 or /123456
+  const pathMatch = window.location.pathname.match(/(?:\/room\/|\/|^)(\d{6})\/?$/);
+  if (pathMatch) return pathMatch[1];
+
+  // 3. Check hash: #123456 or #/room/123456
+  const hashMatch = window.location.hash.match(/(?:\/room\/|\/|^#)(\d{6})\/?$/);
+  if (hashMatch) return hashMatch[1];
+
+  return null;
 }
 
 export function App() {

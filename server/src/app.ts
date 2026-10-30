@@ -31,6 +31,68 @@ function errorPayload(error: unknown): { message: string; code: string } {
   return { message: 'Something went wrong.', code: 'ERROR' };
 }
 
+async function searchYouTubeTracks(query: string): Promise<MediaItemInput[]> {
+  try {
+    const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept-Language': 'en-US,en;q=0.9',
+      },
+    });
+    const html = await res.text();
+    const match =
+      html.match(/var ytInitialData = ({.*?});<\/script>/s) ||
+      html.match(/ytInitialData\s*=\s*({.+?});/s);
+    if (!match) return [];
+
+    const data = JSON.parse(match[1]);
+    const contents =
+      data?.contents?.twoColumnSearchResultsRenderer?.primaryContents
+        ?.sectionListRenderer?.contents?.[0]?.itemSectionRenderer?.contents;
+    if (!contents || !Array.isArray(contents)) return [];
+
+    const videos: MediaItemInput[] = [];
+    for (const item of contents) {
+      if (item.videoRenderer) {
+        const vr = item.videoRenderer;
+        const videoId = vr.videoId;
+        if (!videoId || typeof videoId !== 'string' || videoId.length !== 11) continue;
+
+        const title = vr.title?.runs?.[0]?.text || 'YouTube Video';
+        const artist = vr.ownerText?.runs?.[0]?.text || 'YouTube';
+        const durationStr = vr.lengthText?.simpleText || '';
+        const parts = durationStr.split(':').map(Number);
+        let duration = 0;
+        if (parts.length === 2) duration = parts[0] * 60 + parts[1];
+        else if (parts.length === 3) duration = parts[0] * 3600 + parts[1] * 60 + parts[2];
+
+        const thumbnail =
+          vr.thumbnail?.thumbnails?.slice(-1)[0]?.url ||
+          `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
+
+        videos.push({
+          provider: 'youtube',
+          sourceType: 'video',
+          mediaId: videoId,
+          url: `https://www.youtube.com/watch?v=${videoId}`,
+          title,
+          artist,
+          thumbnail,
+          duration: duration || 210,
+          isPlayable: true,
+        });
+        if (videos.length >= 15) break;
+      }
+    }
+    return videos;
+  } catch (err) {
+    console.warn('YouTube search failed:', err);
+    return [];
+  }
+}
+
 export function createVybeServer() {
   const app = express();
   const server = http.createServer(app);
@@ -101,6 +163,20 @@ export function createVybeServer() {
 
   app.get('/health', (_req, res) => {
     res.json({ status: 'ok', uptime: process.uptime(), serverTime: Date.now() });
+  });
+
+  app.get('/api/search', async (req, res) => {
+    try {
+      const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+      if (!q) {
+        res.json({ success: true, results: [] });
+        return;
+      }
+      const results = await searchYouTubeTracks(q);
+      res.json({ success: true, results });
+    } catch {
+      res.json({ success: true, results: [] });
+    }
   });
 
   app.get('/api/health', (_req, res) => {
@@ -394,6 +470,31 @@ export function createVybeServer() {
         const session = requireSession(socket, payload.roomCode);
         roomManager.endRoom(session.roomCode, session.userId);
         sessions.delete(socket.id);
+      } catch (error) {
+        emitError(socket, error);
+      }
+    });
+
+    socket.on('room:make_admin', (payload: { roomCode?: string; targetUserId?: string } = {}) => {
+      try {
+        const session = requireSession(socket, payload.roomCode);
+        if (!payload.targetUserId) return;
+        const newAdmin = roomManager.transferAdmin(session.roomCode, session.userId, payload.targetUserId);
+        io.to(session.roomCode).emit('admin:changed', newAdmin);
+        io.to(session.roomCode).emit('room:state', roomManager.getState(session.roomCode));
+      } catch (error) {
+        emitError(socket, error);
+      }
+    });
+
+    socket.on('room:kick', (payload: { roomCode?: string; targetUserId?: string } = {}) => {
+      try {
+        const session = requireSession(socket, payload.roomCode);
+        if (!payload.targetUserId) return;
+        roomManager.kickUser(session.roomCode, session.userId, payload.targetUserId);
+        io.to(session.roomCode).emit('room:kicked', { targetUserId: payload.targetUserId, reason: 'You were kicked from the room by the host.' });
+        io.to(session.roomCode).emit('room:user_left', { userId: payload.targetUserId });
+        io.to(session.roomCode).emit('room:state', roomManager.getState(session.roomCode));
       } catch (error) {
         emitError(socket, error);
       }

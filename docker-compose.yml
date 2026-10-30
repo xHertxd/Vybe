@@ -13,3 +13,4 @@ services:
       - ALLOWED_ORIGINS=*
     volumes:
       - ./server/uploads:/app/uploads
+

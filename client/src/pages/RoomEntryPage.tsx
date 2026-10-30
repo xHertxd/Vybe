@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Pencil, Check, AlertCircle, ArrowRight, Shuffle } from 'lucide-react';
+import { Pencil, Check, AlertCircle, ArrowRight, Shuffle, Loader2 } from 'lucide-react';
 import { Footer } from '../components/Footer.js';
 
 interface RoomEntryPageProps {
@@ -47,6 +47,24 @@ function generateRandomUsername(): string {
 
 const USERNAME_RE = /^[A-Za-z]{2,20}$/;
 
+function unlockAudio(): void {
+  try {
+    const AudioContextClass =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextClass) return;
+    const ctx = new AudioContextClass();
+    const buf = ctx.createBuffer(1, 1, 22050);
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.connect(ctx.destination);
+    src.start(0);
+    if (ctx.state === 'suspended') void ctx.resume();
+  } catch {
+    // ignore
+  }
+}
+
 export function RoomEntryPage({
   onCreate,
   onJoin,
@@ -69,14 +87,32 @@ export function RoomEntryPage({
     return ['', '', '', '', '', ''];
   });
   const [error, setError] = useState<string | null>(null);
+  const [isAutoSubmitting, setIsAutoSubmitting] = useState(false);
 
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const autoJoinTriggered = useRef(false);
 
+  const currentCode = digits.join('');
+  const isFullCode = currentCode.length === 6 && /^\d{6}$/.test(currentCode);
+
+  // Directly enter the room or create it if it doesn't exist
+  const submitJoin = (code: string, user: string) => {
+    unlockAudio();
+    setIsAutoSubmitting(true);
+    onJoin(code, user);
+  };
+
+  // If initialCode was supplied in direct URL link, directly enter the room!
   useEffect(() => {
-    if (initialCode && /^\d{6}$/.test(initialCode)) {
+    if (initialCode && /^\d{6}$/.test(initialCode) && !autoJoinTriggered.current) {
+      autoJoinTriggered.current = true;
       setDigits(initialCode.split(''));
+      const timer = setTimeout(() => {
+        submitJoin(initialCode, username);
+      }, 180);
+      return () => clearTimeout(timer);
     }
-  }, [initialCode]);
+  }, [initialCode, username]);
 
   const handleSaveUsername = () => {
     const clean = tempUsername.trim();
@@ -111,6 +147,14 @@ export function RoomEntryPage({
       if (numeric && index < 5) {
         inputRefs.current[index + 1]?.focus();
       }
+
+      // If all 6 digits entered: DIRECTLY make user enter the room (or create if not exist)!
+      const fullCode = newDigits.join('');
+      if (fullCode.length === 6 && /^\d{6}$/.test(fullCode)) {
+        setTimeout(() => {
+          submitJoin(fullCode, username);
+        }, 60);
+      }
     }
   };
 
@@ -133,15 +177,21 @@ export function RoomEntryPage({
         newDigits[i] = pasted[i] || '';
       }
       setDigits(newDigits);
-      const nextIndex = Math.min(5, pasted.length);
-      inputRefs.current[nextIndex]?.focus();
+
+      // If all 6 digits pasted: DIRECTLY make user enter the room!
+      if (pasted.length === 6) {
+        setTimeout(() => {
+          submitJoin(pasted, username);
+        }, 60);
+      } else {
+        const nextIndex = Math.min(5, pasted.length);
+        inputRefs.current[nextIndex]?.focus();
+      }
     }
   };
 
-  const currentCode = digits.join('');
-  const isFullCode = currentCode.length === 6;
-
   const handleCreate = () => {
+    unlockAudio();
     setError(null);
     const clean = username.trim();
     if (!USERNAME_RE.test(clean)) {
@@ -152,39 +202,31 @@ export function RoomEntryPage({
     onCreate(clean);
   };
 
-  const handleJoin = () => {
-    setError(null);
-    const clean = username.trim();
-    if (!USERNAME_RE.test(clean)) {
-      setError('Username must be 2–20 letters only.');
-      setIsEditingUsername(true);
-      return;
-    }
+  const handleJoinManual = () => {
     if (!isFullCode) {
       setError('Please enter all 6 digits of the room code.');
       return;
     }
-    onJoin(currentCode, clean);
+    submitJoin(currentCode, username);
   };
 
   return (
-    <div className="relative min-h-screen w-full bg-[#171719] text-[#fde5b7] flex flex-col items-center justify-center overflow-hidden select-none">
-      {/* Top Header Banner matching exact user design */}
-      <div className="absolute top-0 left-0 z-20">
-        <div className="bg-[#fde5b7] text-black px-10 sm:px-14 py-4 sm:py-5 rounded-br-[40px] sm:rounded-br-[48px] flex items-center shadow-lg">
-          <span className="font-brand font-black text-4xl sm:text-5xl md:text-6xl tracking-tight select-none">
+    <div className="relative min-h-screen w-full bg-[#171719] text-[#fde5b7] flex flex-col items-center justify-between overflow-hidden select-none px-4 py-6">
+      {/* Top Left Minimalist Brand Badge */}
+      <header className="w-full max-w-6xl flex items-center justify-between z-20">
+        <div className="bg-[#fde5b7] text-black px-8 sm:px-12 py-3 sm:py-4 rounded-2xl sm:rounded-3xl flex items-center shadow-md">
+          <span className="font-brand font-black text-3xl sm:text-4xl tracking-tight select-none">
             VYBE
           </span>
         </div>
-      </div>
+      </header>
 
-      {/* Main Center Container - DEAD CENTER of Viewport */}
-      <div className="w-full max-w-[460px] sm:max-w-[500px] px-5 py-8 z-10 flex flex-col items-center my-auto">
-        {/* The Charcoal Card from user design */}
-        <div className="w-full bg-[#262629] rounded-[36px] sm:rounded-[44px] p-8 sm:p-12 shadow-2xl flex flex-col items-center border border-white/5">
+      {/* Main Center Area */}
+      <main className="w-full max-w-[480px] z-10 flex flex-col items-center my-auto">
+        <div className="w-full bg-[#242427] rounded-[36px] sm:rounded-[40px] p-7 sm:p-11 shadow-2xl flex flex-col items-center border border-white/[0.08]">
           {/* 6 Digit Input Boxes */}
           <div
-            className="flex items-center justify-center gap-2.5 sm:gap-3.5 mb-7 w-full"
+            className="flex items-center justify-center gap-2 sm:gap-3.5 mb-7 w-full"
             onPaste={handlePaste}
           >
             {digits.map((digit, idx) => (
@@ -200,16 +242,17 @@ export function RoomEntryPage({
                 value={digit}
                 onChange={(e) => handleDigitChange(idx, e.target.value)}
                 onKeyDown={(e) => handleKeyDown(idx, e)}
-                className="w-11 h-14 sm:w-14 sm:h-16 md:w-15 md:h-17 bg-[#fde5b7] text-black font-brand font-black text-2xl sm:text-3xl md:text-4xl text-center rounded-xl sm:rounded-2xl focus:outline-none focus:ring-4 focus:ring-[#fde5b7]/50 shadow-md transition-all caret-transparent select-none cursor-text"
+                disabled={isAutoSubmitting}
+                className="w-11 h-14 sm:w-14 sm:h-16 md:w-15 md:h-17 bg-[#fde5b7] text-black font-brand font-black text-2xl sm:text-3xl md:text-4xl text-center rounded-xl sm:rounded-2xl focus:outline-none focus:ring-4 focus:ring-[#fde5b7]/50 shadow-md transition-all caret-transparent select-none cursor-text disabled:opacity-75"
               />
             ))}
           </div>
 
-          {/* Username Section: "You will join as username ✏️" */}
+          {/* Username Section: "You will join as username ✏️ 🎲" */}
           <div className="flex items-center justify-center mb-8 text-[#fde5b7] text-sm sm:text-base font-medium">
             <span className="opacity-80 mr-1.5">You will join as</span>
             {isEditingUsername ? (
-              <div className="flex items-center gap-1.5 bg-black/40 px-3 py-1 rounded-lg border border-[#fde5b7]/40">
+              <div className="flex items-center gap-1.5 bg-black/40 px-3 py-1 rounded-xl border border-[#fde5b7]/40">
                 <input
                   type="text"
                   autoFocus
@@ -235,7 +278,8 @@ export function RoomEntryPage({
               </div>
             ) : (
               <div className="flex items-center gap-2">
-                <div
+                <button
+                  type="button"
                   onClick={() => {
                     setTempUsername(username);
                     setIsEditingUsername(true);
@@ -246,8 +290,9 @@ export function RoomEntryPage({
                   <span className="underline decoration-[#fde5b7]/60 underline-offset-4 font-semibold text-[#fde5b7] group-hover:text-white transition-colors">
                     {username}
                   </span>
-                  <Pencil className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#fde5b7] opacity-80 group-hover:opacity-100 group-hover:scale-110 transition-all" />
-                </div>
+                  <Pencil className="w-3.5 h-3.5 text-[#fde5b7] opacity-80 group-hover:opacity-100 group-hover:scale-110 transition-all" />
+                </button>
+
                 <button
                   type="button"
                   onClick={handleShuffleUsername}
@@ -273,11 +318,21 @@ export function RoomEntryPage({
             <div className="w-full space-y-3 flex flex-col items-center">
               <button
                 type="button"
-                onClick={handleJoin}
-                className="w-full py-4 px-8 rounded-full bg-[#1c1c1f] hover:bg-[#252528] active:scale-[0.98] text-[#fde5b7] font-bebas text-2xl sm:text-3xl tracking-widest transition-all shadow-xl border border-white/5 flex items-center justify-center gap-2 hover:border-[#fde5b7]/30"
+                onClick={handleJoinManual}
+                disabled={isAutoSubmitting}
+                className="w-full py-4 px-8 rounded-full bg-[#1c1c1f] hover:bg-[#252528] active:scale-[0.98] text-[#fde5b7] font-bebas text-2xl sm:text-3xl tracking-widest transition-all shadow-xl border border-white/5 flex items-center justify-center gap-2 hover:border-[#fde5b7]/30 disabled:opacity-75"
               >
-                <span>JOIN ROOM</span>
-                <ArrowRight className="w-5 h-5 text-[#fde5b7]" />
+                {isAutoSubmitting ? (
+                  <>
+                    <Loader2 className="w-5 h-5 text-[#fde5b7] animate-spin" />
+                    <span>ENTERING ROOM…</span>
+                  </>
+                ) : (
+                  <>
+                    <span>JOIN ROOM</span>
+                    <ArrowRight className="w-5 h-5 text-[#fde5b7]" />
+                  </>
+                )}
               </button>
 
               <button
@@ -298,12 +353,12 @@ export function RoomEntryPage({
             </button>
           )}
         </div>
-      </div>
+      </main>
 
-      {/* Footer */}
-      <div className="absolute bottom-6 left-0 right-0 w-full z-10 text-center">
+      {/* Footer promoting Hertx */}
+      <footer className="w-full z-10 text-center">
         <Footer />
-      </div>
+      </footer>
     </div>
   );
 }

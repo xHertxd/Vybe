@@ -111,41 +111,28 @@ export const CURATED_TRACKS: MediaItemInput[] = [
     isPlayable: true,
   },
 
-  // Instant Playable 30s Audio Previews
   {
-    provider: 'audio',
-    sourceType: 'track',
-    mediaId: '1440857781',
-    url: 'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview221/v4/a4/09/b3/a409b30c-157b-7033-d922-b9e7c5b16127/mzaf_17290008544975510652.plus.aac.p.m4a',
-    title: 'Starboy (Audio Preview)',
-    artist: 'The Weeknd',
-    album: 'Starboy',
-    thumbnail: 'https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/92/99/82/929982a7-ab39-43e6-a546-1f22ec2e1b65/16UMGIM86060.rgb.jpg/600x600bb.jpg',
-    duration: 30,
+    provider: 'youtube',
+    sourceType: 'video',
+    mediaId: 'kJQP7kiw5Fk',
+    url: 'https://www.youtube.com/watch?v=kJQP7kiw5Fk',
+    title: 'Despacito (feat. Daddy Yankee)',
+    artist: 'Luis Fonsi',
+    album: 'VIDA',
+    thumbnail: 'https://img.youtube.com/vi/kJQP7kiw5Fk/hqdefault.jpg',
+    duration: 282,
     isPlayable: true,
   },
   {
-    provider: 'audio',
-    sourceType: 'track',
-    mediaId: '1440935467',
-    url: 'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview125/v4/09/b1/72/09b172cf-6c4d-0453-7313-0807b588e421/mzaf_13540209228495034638.plus.aac.p.m4a',
-    title: 'Blinding Lights (Audio Preview)',
-    artist: 'The Weeknd',
-    album: 'After Hours',
-    thumbnail: 'https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/e0/b3/29/e0b32948-2b81-c3b6-96b4-845763914a27/20UMGIM08419.rgb.jpg/600x600bb.jpg',
-    duration: 30,
-    isPlayable: true,
-  },
-  {
-    provider: 'audio',
-    sourceType: 'track',
-    mediaId: '1440818804',
-    url: 'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview115/v4/4a/12/35/4a12356c-03eb-7b79-8809-5a11d4e08cf9/mzaf_15082159844696008882.plus.aac.p.m4a',
-    title: 'Get Lucky (Audio Preview)',
-    artist: 'Daft Punk',
-    album: 'Random Access Memories',
-    thumbnail: 'https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/58/01/5d/58015df3-a621-e730-8027-37e428cf15d3/886443927087.jpg/600x600bb.jpg',
-    duration: 30,
+    provider: 'youtube',
+    sourceType: 'video',
+    mediaId: 'JGwWNGJdvx8',
+    url: 'https://www.youtube.com/watch?v=JGwWNGJdvx8',
+    title: 'Shape of You',
+    artist: 'Ed Sheeran',
+    album: '÷ (Divide)',
+    thumbnail: 'https://img.youtube.com/vi/JGwWNGJdvx8/hqdefault.jpg',
+    duration: 234,
     isPlayable: true,
   },
 ];
@@ -170,6 +157,28 @@ export async function searchSongs(query: string): Promise<MediaItemInput[]> {
       t.artist.toLowerCase().includes(clean.toLowerCase())
   );
 
+  // 1. Try backend YouTube search (full songs, no 30s limit)
+  try {
+    const serverUrl = import.meta.env.VITE_SERVER_URL || '';
+    const res = await fetch(`${serverUrl}/api/search?q=${encodeURIComponent(clean)}`, {
+      signal: AbortSignal.timeout(4500),
+    });
+    if (res.ok) {
+      const data = (await res.json()) as { success?: boolean; results?: MediaItemInput[] };
+      if (data.success && data.results && data.results.length > 0) {
+        return data.results;
+      }
+    }
+  } catch {
+    // Backend search offline or timed out, continue to fallback
+  }
+
+  // 2. Return matched curated songs if any
+  if (matchedCurated.length > 0) {
+    return matchedCurated;
+  }
+
+  // 3. iTunes search fallback
   try {
     const url = `https://itunes.apple.com/search?term=${encodeURIComponent(
       clean
@@ -195,19 +204,14 @@ export async function searchSongs(query: string): Promise<MediaItemInput[]> {
           artist: t.artistName || 'Unknown Artist',
           album: t.collectionName || '',
           thumbnail: hdArtwork,
-          // Preview audio files are exactly 30s. Setting accurate 30s duration prevents player freeze
           duration: 30,
           isPlayable: true,
         };
       });
 
-    // Place matching full-length curated tracks first, then search results
-    const combined = [...matchedCurated, ...items];
-    const unique = Array.from(new Map(combined.map((item) => [item.title + item.artist, item])).values());
-    return unique;
-  } catch (err) {
-    console.warn('Live search fallback to curated tracks:', err);
-    return matchedCurated.length > 0 ? matchedCurated : CURATED_TRACKS;
+    return items;
+  } catch {
+    return CURATED_TRACKS;
   }
 }
 

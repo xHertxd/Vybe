@@ -345,6 +345,20 @@ export function useRoomSession({ notify, onEntered, onLeft }: UseRoomSessionOpti
       );
     };
 
+    const onKicked = (payload: { targetUserId?: string; reason?: string }) => {
+      const active = sessionRef.current;
+      if (!payload.targetUserId || payload.targetUserId === active?.userId) {
+        clearSession();
+        setSession(null);
+        setRoom(null);
+        setCurrentUser(null);
+        setPhase('idle');
+        inRoomRef.current = false;
+        onLeft();
+        notify('Removed from room', payload.reason || 'You were kicked from the room by the host.', 'error');
+      }
+    };
+
     const onExpired = () => {
       clearSession();
       setSession(null);
@@ -391,6 +405,7 @@ export function useRoomSession({ notify, onEntered, onLeft }: UseRoomSessionOpti
     socket.on('room:admin_changed', onAdminChanged);
     socket.on('room:user_left', onUserLeft);
     socket.on('room:ended', onEnded);
+    socket.on('room:kicked', onKicked);
     socket.on('room:expired', onExpired);
     socket.on('room:error', onError);
 
@@ -409,6 +424,7 @@ export function useRoomSession({ notify, onEntered, onLeft }: UseRoomSessionOpti
       socket.off('room:admin_changed', onAdminChanged);
       socket.off('room:user_left', onUserLeft);
       socket.off('room:ended', onEnded);
+      socket.off('room:kicked', onKicked);
       socket.off('room:expired', onExpired);
       socket.off('room:error', onError);
     };
