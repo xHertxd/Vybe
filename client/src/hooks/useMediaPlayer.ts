@@ -4,7 +4,7 @@ import { clockSync } from '../services/clockSync.js';
 import { getApiUrl, socket } from '../services/socket.js';
 import { spotifyDevice } from '../services/spotify.js';
 import {
-  AudioAdapter,
+  HowlerAudioAdapter,
   SpotifyAdapter,
   YouTubeAdapter,
   createYouTubeAdapter,
@@ -88,13 +88,12 @@ export function useMediaPlayer({
     let cancelled = false;
 
     if (track.provider === 'audio') {
-      const element = audioRef.current;
-      if (!element) return;
-      element.src = audioSource(track);
-      element.load();
-      const adapter = new AudioAdapter(
-        element,
+      const src = audioSource(track);
+      const adapter = new HowlerAudioAdapter(
+        src,
+        volume,
         () => {
+          if (cancelled) return;
           setPhase('ready');
           setAdapterTick((tick) => tick + 1);
         },
@@ -104,9 +103,13 @@ export function useMediaPlayer({
             socket.emit('track:ended', { roomCode, trackId: track.id });
             socket.emit('playback:track_ended', { roomCode, trackId: track.id });
           }
+        },
+        (err) => {
+          if (cancelled) return;
+          setError(err);
+          setPhase('error');
         }
       );
-      adapter.setVolume(volume);
       adapterRef.current = adapter;
       if (adapter.isReady()) setPhase('ready');
       setAdapterTick((tick) => tick + 1);
@@ -371,6 +374,25 @@ export function useMediaPlayer({
             reportedDuration.current = track.id;
             setMeasuredDuration(measured);
             if (Math.abs(measured - (track.duration || 0)) > 2) {
+              socket.emit('media:duration', {
+                roomCode,
+                itemId: track.id,
+                duration: measured,
+              });
+            }
+          }
+        }
+
+        if (
+          track.provider === 'audio' &&
+          adapter instanceof HowlerAudioAdapter &&
+          reportedDuration.current !== track.id
+        ) {
+          const measured = Math.round(adapter.getDuration());
+          if (measured > 1) {
+            reportedDuration.current = track.id;
+            setMeasuredDuration(measured);
+            if (track.duration <= 0 || Math.abs(measured - (track.duration || 0)) > 2) {
               socket.emit('media:duration', {
                 roomCode,
                 itemId: track.id,

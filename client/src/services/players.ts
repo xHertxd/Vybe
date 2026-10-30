@@ -1,4 +1,5 @@
 import type { MediaProvider } from '../types.js';
+import { Howl, Howler } from 'howler';
 import { spotifyDevice } from './spotify.js';
 
 export interface PlayerAdapter {
@@ -6,6 +7,7 @@ export interface PlayerAdapter {
   isReady(): boolean;
   isPlaying?(): boolean;
   getTime(): number;
+  getDuration?(): number;
   play(): void | Promise<void>;
   pause(): void;
   seek(seconds: number): void;
@@ -13,6 +15,113 @@ export interface PlayerAdapter {
   setVolume(volume: number): void;
   prime?(position: number, shouldPlay: boolean): void | Promise<void>;
   destroy(): void;
+}
+
+export class HowlerAudioAdapter implements PlayerAdapter {
+  public readonly provider = 'audio' as const;
+  private sound: Howl | null = null;
+  private ready = false;
+  private volume = 0.8;
+  private readonly onReadyCallback?: () => void;
+  private readonly onEndedCallback?: () => void;
+  private readonly onErrorCallback?: (err: string) => void;
+
+  constructor(
+    url: string,
+    volume = 0.8,
+    onReady?: () => void,
+    onEnded?: () => void,
+    onError?: (err: string) => void
+  ) {
+    this.volume = volume;
+    this.onReadyCallback = onReady;
+    this.onEndedCallback = onEnded;
+    this.onErrorCallback = onError;
+
+    this.sound = new Howl({
+      src: [url],
+      html5: true, // Stream directly via HTML5 Audio through Howler's unified engine
+      preload: true,
+      volume: this.volume,
+      autoplay: false,
+      onload: () => {
+        this.ready = true;
+        this.onReadyCallback?.();
+      },
+      onend: () => {
+        this.onEndedCallback?.();
+      },
+      onloaderror: (_id, err) => {
+        this.onErrorCallback?.(`Audio error: ${err}`);
+      },
+      onplayerror: (_id, _err) => {
+        this.sound?.once('unlock', () => {
+          this.sound?.play();
+        });
+      },
+    });
+
+    if (this.sound.state() === 'loaded') {
+      this.ready = true;
+    }
+  }
+
+  public isReady(): boolean {
+    return this.ready || this.sound?.state() === 'loaded';
+  }
+
+  public isPlaying(): boolean {
+    return Boolean(this.sound?.playing());
+  }
+
+  public getTime(): number {
+    if (!this.sound) return 0;
+    const pos = this.sound.seek();
+    return typeof pos === 'number' && Number.isFinite(pos) ? pos : 0;
+  }
+
+  public getDuration(): number {
+    return this.sound?.duration() || 0;
+  }
+
+  public async play(): Promise<void> {
+    if (!this.sound) return;
+    if (Howler.ctx && Howler.ctx.state === 'suspended') {
+      await Howler.ctx.resume().catch(() => {});
+    }
+    this.sound.play();
+  }
+
+  public pause(): void {
+    this.sound?.pause();
+  }
+
+  public seek(seconds: number): void {
+    if (!this.sound || !Number.isFinite(seconds)) return;
+    const dur = this.sound.duration();
+    const maxSeek = dur && Number.isFinite(dur) && dur > 0.5 ? Math.max(0, dur - 0.25) : 3600;
+    const clamped = Math.min(maxSeek, Math.max(0, seconds));
+    this.sound.seek(clamped);
+  }
+
+  public setRate(rate: number): void {
+    if (!this.sound) return;
+    const clampedRate = Math.max(0.85, Math.min(1.15, rate));
+    this.sound.rate(clampedRate);
+  }
+
+  public setVolume(volume: number): void {
+    this.volume = Math.max(0, Math.min(1, volume));
+    this.sound?.volume(this.volume);
+  }
+
+  public destroy(): void {
+    if (this.sound) {
+      this.sound.stop();
+      this.sound.unload();
+      this.sound = null;
+    }
+  }
 }
 
 export class AudioAdapter implements PlayerAdapter {
