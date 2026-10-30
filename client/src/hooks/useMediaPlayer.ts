@@ -218,7 +218,7 @@ export function useMediaPlayer({
       previousTrackId.current = playback.currentTrack?.id;
 
       try {
-        if (activeAdapter.prime) {
+        if (activeAdapter instanceof SpotifyAdapter && activeAdapter.prime) {
           await activeAdapter.prime(target, playback.status === 'playing');
         }
 
@@ -251,8 +251,9 @@ export function useMediaPlayer({
             return;
           }
 
-          // 2. Authoritative update received while already playing (e.g. seek, force_sync, or status update):
-          if (statusChanged || discrepancy > 0.15) {
+          // 2. Authoritative update received while already playing (e.g. seek, or resume from pause):
+          // Never hard seek while already playing unless huge desync (> 1.2s)
+          if (statusChanged || (discrepancy > 1.2 && Date.now() - lastSeekTime.current > 3000)) {
             activeAdapter.seek(target);
             lastSeekTime.current = Date.now();
             activeAdapter.setRate(1);
@@ -261,7 +262,7 @@ export function useMediaPlayer({
         } else {
           // Status is paused or stopped
           activeAdapter.pause();
-          if (Math.abs(activeAdapter.getTime() - target) > 0.08) {
+          if (Math.abs(activeAdapter.getTime() - target) > 0.1) {
             activeAdapter.seek(target);
             lastSeekTime.current = Date.now();
           }
@@ -355,27 +356,32 @@ export function useMediaPlayer({
         const timeSinceLastSeek = Date.now() - lastSeekTime.current;
 
         if (isYouTube) {
-          // YouTube: Seek if drift > 300ms with 1.5s cooldown
-          if (absDrift > 0.30 && timeSinceLastSeek > 1500) {
+          // YouTube: Only hard seek on massive desync (> 1.5s) to prevent video buffer freezing
+          if (absDrift > 1.5 && timeSinceLastSeek > 4000) {
             adapter.seek(target);
             lastSeekTime.current = Date.now();
             adapter.setRate(1);
-          } else if (absDrift > 0.08) {
-            adapter.setRate(drift < 0 ? 1.05 : 0.95);
+          } else if (absDrift > 0.1) {
+            // Gentle 3% rate correction for smooth catch-up without frame drops
+            adapter.setRate(drift < 0 ? 1.03 : 0.97);
           } else {
             adapter.setRate(1);
           }
         } else {
-          // Howler Audio / WebAudio: Sample-accurate sync!
-          if (absDrift > 0.12 && timeSinceLastSeek > 1000) {
-            // Immediate snap seek for desync > 120ms
+          // Howler Audio / WebAudio:
+          // Never hard seek unless drift > 0.8s and sustained (prevents audio hitching/stuttering)
+          if (absDrift > 0.8 && timeSinceLastSeek > 3000) {
             adapter.seek(target);
             lastSeekTime.current = Date.now();
             adapter.setRate(1);
-          } else if (absDrift > 0.025) {
-            // Fast 5% pitch-neutral rate correction for subtle 25ms-120ms jitter (catches up in < 500ms!)
-            adapter.setRate(drift < 0 ? 1.05 : 0.95);
+          } else if (absDrift > 0.15) {
+            // Moderate drift (150ms - 800ms): 4% catch-up rate (gains 40ms/sec smoothly)
+            adapter.setRate(drift < 0 ? 1.04 : 0.96);
+          } else if (absDrift > 0.03) {
+            // Micro drift (30ms - 150ms): 1.5% micro-trim (inaudible, seamless)
+            adapter.setRate(drift < 0 ? 1.015 : 0.985);
           } else {
+            // Within 30ms: perfect sync! Rate = 1.0
             adapter.setRate(1);
           }
         }

@@ -22,7 +22,8 @@ export class HowlerAudioAdapter implements PlayerAdapter {
   private sound: Howl | null = null;
   private ready = false;
   private volume = 0.8;
-  private currentPos = 0;
+  private pendingSeek: number | null = null;
+  private currentRate = 1.0;
   private readonly url: string;
   private readonly onReadyCallback?: () => void;
   private readonly onEndedCallback?: () => void;
@@ -60,19 +61,13 @@ export class HowlerAudioAdapter implements PlayerAdapter {
       autoplay: false,
       onload: () => {
         this.ready = true;
-        if (this.currentPos > 0) {
+        if (this.pendingSeek !== null) {
           try {
-            this.sound?.seek(this.currentPos);
+            this.sound?.seek(this.pendingSeek);
+            this.pendingSeek = null;
           } catch {}
         }
         this.onReadyCallback?.();
-      },
-      onplay: (id) => {
-        if (this.currentPos > 0) {
-          try {
-            this.sound?.seek(this.currentPos, id);
-          } catch {}
-        }
       },
       onend: () => {
         this.onEndedCallback?.();
@@ -88,19 +83,15 @@ export class HowlerAudioAdapter implements PlayerAdapter {
       onplayerror: (_id, _err) => {
         this.sound?.once('unlock', () => {
           this.sound?.play();
-          if (this.currentPos > 0) {
-            try {
-              this.sound?.seek(this.currentPos);
-            } catch {}
-          }
         });
       },
     });
 
     if (this.sound.state() === 'loaded') {
       this.ready = true;
-      if (this.currentPos > 0) {
-        this.sound.seek(this.currentPos);
+      if (this.pendingSeek !== null) {
+        this.sound.seek(this.pendingSeek);
+        this.pendingSeek = null;
       }
     }
   }
@@ -114,13 +105,13 @@ export class HowlerAudioAdapter implements PlayerAdapter {
   }
 
   public getTime(): number {
-    if (!this.sound) return this.currentPos;
-    const pos = this.sound.seek();
-    if (typeof pos === 'number' && Number.isFinite(pos) && pos > 0) {
-      this.currentPos = pos;
-      return pos;
+    if (!this.sound || !this.ready) return this.pendingSeek ?? 0;
+    try {
+      const pos = this.sound.seek();
+      return typeof pos === 'number' && Number.isFinite(pos) ? pos : 0;
+    } catch {
+      return 0;
     }
-    return this.currentPos;
   }
 
   public getDuration(): number {
@@ -132,11 +123,8 @@ export class HowlerAudioAdapter implements PlayerAdapter {
     if (Howler.ctx && Howler.ctx.state === 'suspended') {
       await Howler.ctx.resume().catch(() => {});
     }
-    const id = this.sound.play();
-    if (this.currentPos > 0) {
-      try {
-        this.sound.seek(this.currentPos, id);
-      } catch {}
+    if (!this.sound.playing()) {
+      this.sound.play();
     }
   }
 
@@ -146,18 +134,25 @@ export class HowlerAudioAdapter implements PlayerAdapter {
 
   public seek(seconds: number): void {
     if (!Number.isFinite(seconds)) return;
-    this.currentPos = Math.max(0, seconds);
-    if (!this.sound) return;
+    const clamped = Math.max(0, seconds);
+    if (!this.sound || !this.ready) {
+      this.pendingSeek = clamped;
+      return;
+    }
     const dur = this.sound.duration();
     const maxSeek = dur && Number.isFinite(dur) && dur > 0.5 ? Math.max(0, dur - 0.25) : 3600;
-    const clamped = Math.min(maxSeek, this.currentPos);
+    const target = Math.min(maxSeek, clamped);
     try {
-      this.sound.seek(clamped);
-    } catch {}
+      this.sound.seek(target);
+    } catch {
+      this.pendingSeek = target;
+    }
   }
 
   public setRate(rate: number): void {
     if (!this.sound) return;
+    if (Math.abs(this.currentRate - rate) < 0.005) return;
+    this.currentRate = rate;
     const clampedRate = Math.max(0.85, Math.min(1.15, rate));
     try {
       this.sound.rate(clampedRate);
@@ -167,15 +162,6 @@ export class HowlerAudioAdapter implements PlayerAdapter {
   public setVolume(volume: number): void {
     this.volume = Math.max(0, Math.min(1, volume));
     this.sound?.volume(this.volume);
-  }
-
-  public async prime(position: number, shouldPlay: boolean): Promise<void> {
-    this.seek(position);
-    if (shouldPlay) {
-      await this.play();
-    } else {
-      this.pause();
-    }
   }
 
   public destroy(): void {
@@ -484,16 +470,11 @@ export class YouTubeAdapter implements PlayerAdapter {
     }
   }
 
-  public async prime(position: number, shouldPlay: boolean): Promise<void> {
-    this.seek(position);
-    if (shouldPlay) {
-      this.play();
-    } else {
-      this.pause();
-    }
-  }
+  private currentRate = 1.0;
 
   public setRate(rate: number): void {
+    if (Math.abs(this.currentRate - rate) < 0.005) return;
+    this.currentRate = rate;
     try {
       if (typeof this.player?.setPlaybackRate === 'function') {
         this.player.setPlaybackRate(rate);

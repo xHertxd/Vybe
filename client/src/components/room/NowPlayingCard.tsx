@@ -84,13 +84,13 @@ export function NowPlayingCard({
 
   const handleToggleFullscreen = () => {
     if (!isFullscreen) {
-      if (youtubeMode === 'audio') {
+      if (track?.provider === 'youtube' && youtubeMode === 'audio') {
         onYouTubeModeChange('video');
       }
       setIsFullscreen(true);
       try {
         if (stageRef.current?.requestFullscreen) {
-          void stageRef.current.requestFullscreen();
+          void stageRef.current.requestFullscreen().catch(() => {});
         } else if ((stageRef.current as any)?.webkitRequestFullscreen) {
           void (stageRef.current as any).webkitRequestFullscreen();
         }
@@ -98,8 +98,8 @@ export function NowPlayingCard({
     } else {
       setIsFullscreen(false);
       try {
-        if (document.fullscreenElement) {
-          void document.exitFullscreen();
+        if (document.fullscreenElement || (document as any).webkitFullscreenElement) {
+          void document.exitFullscreen().catch(() => {});
         }
       } catch {}
     }
@@ -267,17 +267,17 @@ export function NowPlayingCard({
             </span>
           )}
 
-          {/* Full screen option when playing in video */}
-          {track?.provider === 'youtube' && youtubeMode === 'video' && (
+          {/* Full screen option for phones and desktops */}
+          {track && (
             <button
               type="button"
               onClick={handleToggleFullscreen}
-              className="h-8 px-2.5 items-center gap-1.5 rounded-xl border border-white/[0.1] bg-white/[0.05] text-[#fde5b7] hover:text-white hover:border-white/25 transition-all inline-flex cursor-pointer text-xs font-medium shadow-sm"
-              title={isFullscreen ? 'Exit full screen' : 'Full screen (only video shows)'}
+              className="h-8 px-2.5 items-center gap-1.5 rounded-xl border border-white/[0.1] bg-white/[0.05] text-[#fde5b7] hover:text-white hover:border-white/25 active:scale-95 transition-all inline-flex cursor-pointer text-xs font-medium shadow-sm"
+              title={isFullscreen ? 'Exit full screen' : 'Full screen mode'}
               aria-label={isFullscreen ? 'Exit full screen' : 'Full screen'}
             >
-              {isFullscreen ? <Minimize className="h-3.5 w-3.5" /> : <Maximize className="h-3.5 w-3.5" />}
-              <span className="hidden sm:inline">{isFullscreen ? 'Exit Full Screen' : 'Full Screen'}</span>
+              {isFullscreen ? <Minimize className="h-3.5 w-3.5" /> : <Maximize className="h-3.5 w-3.5 text-[#40E0D0]" />}
+              <span>{isFullscreen ? 'Exit Full Screen' : 'Full Screen'}</span>
             </button>
           )}
 
@@ -300,7 +300,7 @@ export function NowPlayingCard({
         className={cn(
           'group relative overflow-hidden bg-ink ring-1 ring-sand transition-all',
           isFullscreen
-            ? 'fixed inset-0 z-[99999] w-screen h-screen rounded-none ring-0 flex items-center justify-center bg-black'
+            ? 'fixed inset-0 z-[99999] w-screen h-[100dvh] rounded-none ring-0 flex items-center justify-center bg-black overflow-hidden'
             : cn(
                 'rounded-[16px]',
                 theater ? 'aspect-[16/8] sm:aspect-[16/7]' : 'aspect-[16/10] sm:aspect-[16/9]'
@@ -314,10 +314,27 @@ export function NowPlayingCard({
               e.stopPropagation();
               handleToggleFullscreen();
             }}
-            className="absolute top-5 right-5 z-50 flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-black/80 hover:bg-black text-white border border-white/20 backdrop-blur-md text-xs transition-opacity hover:opacity-100 opacity-70 cursor-pointer shadow-2xl"
+            className="absolute top-4 right-4 z-50 flex items-center gap-2 px-4 py-2 rounded-full bg-black/80 hover:bg-black active:scale-95 text-white border border-white/25 backdrop-blur-md text-xs font-semibold shadow-2xl transition-all cursor-pointer"
           >
-            <Minimize className="h-4 w-4" />
+            <Minimize className="h-4 w-4 text-[#40E0D0]" />
             <span>Exit Full Screen</span>
+          </button>
+        )}
+
+        {/* Floating 1-tap Fullscreen button directly on the stage for mobile phones */}
+        {!isFullscreen && track && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleToggleFullscreen();
+            }}
+            className="absolute top-3 right-3 z-30 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-black/60 hover:bg-black/85 active:scale-95 text-white backdrop-blur-md border border-white/20 text-[11px] font-semibold transition-all cursor-pointer shadow-lg sm:hidden"
+            title="Full screen"
+            aria-label="Full screen"
+          >
+            <Maximize className="h-3 w-3 text-[#40E0D0]" />
+            <span>Full Screen</span>
           </button>
         )}
 
