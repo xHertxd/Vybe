@@ -150,3 +150,4 @@ npm run start
 
 ## 📄 License
 MIT License. Built for modern synchronized listening experiences.
+

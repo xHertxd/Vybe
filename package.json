@@ -2,14 +2,20 @@
   "name": "vybe",
   "version": "1.0.0",
   "description": "Vybe - Synchronized Multi-Device Music & Media Player",
+  "workspaces": [
+    "client",
+    "server"
+  ],
   "scripts": {
     "dev": "concurrently -n \"server,client\" -c \"magenta,cyan\" \"npm run server\" \"npm run client\"",
     "server": "npm --prefix server run dev",
     "client": "npm --prefix client run dev",
-    "build": "npm --prefix client run build",
+    "build": "npm --prefix client install --include=dev && npm --prefix client run build",
+    "build:server": "npm --prefix server install --include=dev && npm --prefix server run build",
     "start": "npm --prefix server run start"
   },
-  "devDependencies": {
-    "concurrently": "^9.1.2"
+  "dependencies": {
+    "concurrently": "^9.1.2",
+    "typescript": "^5.8.2"
   }
 }

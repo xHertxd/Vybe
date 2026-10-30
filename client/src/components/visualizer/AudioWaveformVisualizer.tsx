@@ -85,3 +85,4 @@ export const AudioWaveformVisualizer: React.FC<AudioWaveformVisualizerProps> = (
     />
   );
 };
+

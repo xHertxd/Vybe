@@ -25,3 +25,4 @@ Thumbs.db
 # Uploads directory contents except gitkeep
 uploads/*
 !uploads/.gitkeep
+

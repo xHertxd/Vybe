@@ -345,3 +345,4 @@ export class MediaResolver {
     throw new Error('Unsupported media URL. Please provide a valid YouTube video/music URL, Spotify track link, or direct audio link (.mp3, .wav, etc.).');
   }
 }
+

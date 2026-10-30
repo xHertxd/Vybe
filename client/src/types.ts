@@ -62,3 +62,4 @@ export interface SyncMetrics {
   inSync: boolean;
   correctionMode: 'none' | 'speed-nudge' | 'hard-seek' | 'buffering';
 }
+

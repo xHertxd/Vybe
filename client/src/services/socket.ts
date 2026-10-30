@@ -33,3 +33,4 @@ export function getStoredUsername(): string {
 export function setStoredUsername(username: string): void {
   localStorage.setItem(STORAGE_USERNAME_KEY, username);
 }
+
