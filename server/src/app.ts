@@ -99,6 +99,10 @@ export function createVybeServer() {
   // REST API
   // ---------------------------------------------------------------------------
 
+  app.get('/health', (_req, res) => {
+    res.json({ status: 'ok', uptime: process.uptime(), serverTime: Date.now() });
+  });
+
   app.get('/api/health', (_req, res) => {
     res.json({
       status: 'ok',

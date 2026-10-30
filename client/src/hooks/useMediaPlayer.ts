@@ -89,10 +89,20 @@ export function useMediaPlayer({
       if (!element) return;
       element.src = audioSource(track);
       element.load();
-      const adapter = new AudioAdapter(element, () => {
-        setPhase('ready');
-        setAdapterTick((tick) => tick + 1);
-      });
+      const adapter = new AudioAdapter(
+        element,
+        () => {
+          setPhase('ready');
+          setAdapterTick((tick) => tick + 1);
+        },
+        () => {
+          if (endedForTrack.current !== track.id) {
+            endedForTrack.current = track.id;
+            socket.emit('track:ended', { roomCode, trackId: track.id });
+            socket.emit('playback:track_ended', { roomCode, trackId: track.id });
+          }
+        }
+      );
       adapter.setVolume(volume);
       adapterRef.current = adapter;
       if (adapter.isReady()) setPhase('ready');
@@ -254,6 +264,16 @@ export function useMediaPlayer({
         setCurrentTime(position);
         setDriftMs(driftMillis);
 
+        const duration = track.duration || (active.currentTrack?.duration ?? 0);
+        if (duration > 0 && (position >= duration - 0.4 || target >= duration - 0.4)) {
+          if (endedForTrack.current !== track.id) {
+            endedForTrack.current = track.id;
+            socket.emit('track:ended', { roomCode, trackId: track.id });
+            socket.emit('playback:track_ended', { roomCode, trackId: track.id });
+          }
+          return;
+        }
+
         if (Math.abs(drift) > 1.2) {
           adapter.seek(target);
           adapter.setRate(1);
@@ -274,12 +294,6 @@ export function useMediaPlayer({
           }
         } else {
           notPlayingTicks.current = 0;
-        }
-
-        const duration = track.duration || (active.currentTrack?.duration ?? 0);
-        if (duration > 0 && endedForTrack.current !== track.id && position >= duration - 0.35) {
-          endedForTrack.current = track.id;
-          socket.emit('playback:track_ended', { roomCode, trackId: track.id });
         }
 
         if (

@@ -20,19 +20,26 @@ export class AudioAdapter implements PlayerAdapter {
   private ready = false;
   private readonly element: HTMLAudioElement;
   private readonly onReadyCallback?: () => void;
+  private readonly onEndedCallback?: () => void;
 
-  constructor(element: HTMLAudioElement, onReady?: () => void) {
+  constructor(element: HTMLAudioElement, onReady?: () => void, onEnded?: () => void) {
     this.element = element;
     this.onReadyCallback = onReady;
+    this.onEndedCallback = onEnded;
     if (element.readyState >= 1) this.ready = true;
     element.addEventListener('loadedmetadata', this.onReady);
     element.addEventListener('canplay', this.onReady);
+    element.addEventListener('ended', this.onEnded);
   }
 
   private onReady = (): void => {
     if (this.ready) return;
     this.ready = true;
     this.onReadyCallback?.();
+  };
+
+  private onEnded = (): void => {
+    this.onEndedCallback?.();
   };
 
   public isReady(): boolean {
@@ -57,7 +64,9 @@ export class AudioAdapter implements PlayerAdapter {
 
   public seek(seconds: number): void {
     if (Number.isFinite(seconds)) {
-      this.element.currentTime = Math.max(0, seconds);
+      const dur = this.element.duration;
+      const maxSeek = dur && Number.isFinite(dur) && dur > 0.5 ? Math.max(0, dur - 0.25) : 29.8;
+      this.element.currentTime = Math.min(maxSeek, Math.max(0, seconds));
     }
   }
 
@@ -72,6 +81,7 @@ export class AudioAdapter implements PlayerAdapter {
   public destroy(): void {
     this.element.removeEventListener('loadedmetadata', this.onReady);
     this.element.removeEventListener('canplay', this.onReady);
+    this.element.removeEventListener('ended', this.onEnded);
     this.element.pause();
     this.element.removeAttribute('src');
     this.element.load();
