@@ -22,6 +22,8 @@ export class HowlerAudioAdapter implements PlayerAdapter {
   private sound: Howl | null = null;
   private ready = false;
   private volume = 0.8;
+  private currentPos = 0;
+  private readonly url: string;
   private readonly onReadyCallback?: () => void;
   private readonly onEndedCallback?: () => void;
   private readonly onErrorCallback?: (err: string) => void;
@@ -33,36 +35,73 @@ export class HowlerAudioAdapter implements PlayerAdapter {
     onEnded?: () => void,
     onError?: (err: string) => void
   ) {
+    this.url = url;
     this.volume = volume;
     this.onReadyCallback = onReady;
     this.onEndedCallback = onEnded;
     this.onErrorCallback = onError;
 
+    this.initHowl(false); // Prefer Web Audio API for sample-accurate instant seeks and zero latency
+  }
+
+  private initHowl(useHtml5: boolean): void {
+    if (this.sound) {
+      try {
+        this.sound.unload();
+      } catch {}
+      this.sound = null;
+    }
+
     this.sound = new Howl({
-      src: [url],
-      html5: true, // Stream directly via HTML5 Audio through Howler's unified engine
+      src: [this.url],
+      html5: useHtml5,
       preload: true,
       volume: this.volume,
       autoplay: false,
       onload: () => {
         this.ready = true;
+        if (this.currentPos > 0) {
+          try {
+            this.sound?.seek(this.currentPos);
+          } catch {}
+        }
         this.onReadyCallback?.();
+      },
+      onplay: (id) => {
+        if (this.currentPos > 0) {
+          try {
+            this.sound?.seek(this.currentPos, id);
+          } catch {}
+        }
       },
       onend: () => {
         this.onEndedCallback?.();
       },
       onloaderror: (_id, err) => {
-        this.onErrorCallback?.(`Audio error: ${err}`);
+        if (!useHtml5) {
+          // If WebAudio API failed (e.g. cross-origin CORS headers absent), fallback to HTML5 Audio streaming
+          this.initHowl(true);
+        } else {
+          this.onErrorCallback?.(`Audio error: ${err}`);
+        }
       },
       onplayerror: (_id, _err) => {
         this.sound?.once('unlock', () => {
           this.sound?.play();
+          if (this.currentPos > 0) {
+            try {
+              this.sound?.seek(this.currentPos);
+            } catch {}
+          }
         });
       },
     });
 
     if (this.sound.state() === 'loaded') {
       this.ready = true;
+      if (this.currentPos > 0) {
+        this.sound.seek(this.currentPos);
+      }
     }
   }
 
@@ -75,9 +114,13 @@ export class HowlerAudioAdapter implements PlayerAdapter {
   }
 
   public getTime(): number {
-    if (!this.sound) return 0;
+    if (!this.sound) return this.currentPos;
     const pos = this.sound.seek();
-    return typeof pos === 'number' && Number.isFinite(pos) ? pos : 0;
+    if (typeof pos === 'number' && Number.isFinite(pos) && pos > 0) {
+      this.currentPos = pos;
+      return pos;
+    }
+    return this.currentPos;
   }
 
   public getDuration(): number {
@@ -89,7 +132,12 @@ export class HowlerAudioAdapter implements PlayerAdapter {
     if (Howler.ctx && Howler.ctx.state === 'suspended') {
       await Howler.ctx.resume().catch(() => {});
     }
-    this.sound.play();
+    const id = this.sound.play();
+    if (this.currentPos > 0) {
+      try {
+        this.sound.seek(this.currentPos, id);
+      } catch {}
+    }
   }
 
   public pause(): void {
@@ -97,17 +145,23 @@ export class HowlerAudioAdapter implements PlayerAdapter {
   }
 
   public seek(seconds: number): void {
-    if (!this.sound || !Number.isFinite(seconds)) return;
+    if (!Number.isFinite(seconds)) return;
+    this.currentPos = Math.max(0, seconds);
+    if (!this.sound) return;
     const dur = this.sound.duration();
     const maxSeek = dur && Number.isFinite(dur) && dur > 0.5 ? Math.max(0, dur - 0.25) : 3600;
-    const clamped = Math.min(maxSeek, Math.max(0, seconds));
-    this.sound.seek(clamped);
+    const clamped = Math.min(maxSeek, this.currentPos);
+    try {
+      this.sound.seek(clamped);
+    } catch {}
   }
 
   public setRate(rate: number): void {
     if (!this.sound) return;
     const clampedRate = Math.max(0.85, Math.min(1.15, rate));
-    this.sound.rate(clampedRate);
+    try {
+      this.sound.rate(clampedRate);
+    } catch {}
   }
 
   public setVolume(volume: number): void {
@@ -115,10 +169,21 @@ export class HowlerAudioAdapter implements PlayerAdapter {
     this.sound?.volume(this.volume);
   }
 
+  public async prime(position: number, shouldPlay: boolean): Promise<void> {
+    this.seek(position);
+    if (shouldPlay) {
+      await this.play();
+    } else {
+      this.pause();
+    }
+  }
+
   public destroy(): void {
     if (this.sound) {
-      this.sound.stop();
-      this.sound.unload();
+      try {
+        this.sound.stop();
+        this.sound.unload();
+      } catch {}
       this.sound = null;
     }
   }
@@ -297,16 +362,19 @@ export class YouTubeAdapter implements PlayerAdapter {
   private ready = false;
   private errorMessage: string | null = null;
   private volume = 85;
+  private currentPos = 0;
   private readonly player: YTPlayer;
   private readonly onReadyCallback?: () => void;
   private readonly onEndedCallback?: () => void;
 
   constructor(
     player: YTPlayer,
+    initialPos = 0,
     onReadyCallback?: () => void,
     onEndedCallback?: () => void
   ) {
     this.player = player;
+    this.currentPos = initialPos;
     this.onReadyCallback = onReadyCallback;
     this.onEndedCallback = onEndedCallback;
   }
@@ -315,6 +383,9 @@ export class YouTubeAdapter implements PlayerAdapter {
     if (this.ready) return;
     this.ready = true;
     try {
+      if (this.currentPos > 0 && typeof this.player?.seekTo === 'function') {
+        this.player.seekTo(this.currentPos, true);
+      }
       if (typeof this.player?.setVolume === 'function') {
         this.player.setVolume(this.volume);
       }
@@ -343,12 +414,14 @@ export class YouTubeAdapter implements PlayerAdapter {
   public getTime(): number {
     try {
       if (typeof this.player?.getCurrentTime === 'function') {
-        return this.player.getCurrentTime() || 0;
+        const t = this.player.getCurrentTime() || 0;
+        if (t > 0) this.currentPos = t;
+        return t || this.currentPos;
       }
     } catch {
       // ignore
     }
-    return 0;
+    return this.currentPos;
   }
 
   public getDuration(): number {
@@ -400,12 +473,23 @@ export class YouTubeAdapter implements PlayerAdapter {
   }
 
   public seek(seconds: number): void {
+    if (!Number.isFinite(seconds)) return;
+    this.currentPos = Math.max(0, seconds);
     try {
       if (typeof this.player?.seekTo === 'function') {
-        this.player.seekTo(Math.max(0, seconds), true);
+        this.player.seekTo(this.currentPos, true);
       }
     } catch {
       // ignore
+    }
+  }
+
+  public async prime(position: number, shouldPlay: boolean): Promise<void> {
+    this.seek(position);
+    if (shouldPlay) {
+      this.play();
+    } else {
+      this.pause();
     }
   }
 
@@ -444,6 +528,7 @@ export class YouTubeAdapter implements PlayerAdapter {
 export function createYouTubeAdapter(
   host: HTMLElement,
   videoId: string,
+  initialPos = 0,
   onReadyCallback?: () => void,
   onEndedCallback?: () => void
 ): Promise<YouTubeAdapter> {
@@ -463,6 +548,7 @@ export function createYouTubeAdapter(
           height: '100%',
           playerVars: {
             autoplay: 1,
+            start: Math.floor(initialPos),
             controls: 0,
             showinfo: 0,
             rel: 0,
@@ -513,7 +599,7 @@ export function createYouTubeAdapter(
           },
         });
 
-        adapter = new YouTubeAdapter(player, onReadyCallback, onEndedCallback);
+        adapter = new YouTubeAdapter(player, initialPos, onReadyCallback, onEndedCallback);
 
         window.setTimeout(() => {
           if (!settled && adapter) {

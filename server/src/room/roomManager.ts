@@ -621,13 +621,13 @@ export class RoomManager {
     const position = this.sync.positionAt(room.state.playback, now);
     const isPlaying = room.state.playback.status === 'playing';
 
-    // Authoritative resync with 600ms scheduling delay so all devices hit the exact same millisecond
+    // Authoritative resync anchored immediately to now (no delay freezing playback)
     const playback: PlaybackState = {
       status: isPlaying ? 'playing' : 'paused',
       currentTrack,
       position,
       serverTimestamp: now,
-      scheduledStartTime: isPlaying ? now + 600 : null,
+      scheduledStartTime: null,
       playbackRate: 1,
       version: now,
     };

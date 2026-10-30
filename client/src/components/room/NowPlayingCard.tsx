@@ -25,6 +25,7 @@ import {
 import type { RoomState, RoomUser } from '../../types.js';
 import type { useMediaPlayer } from '../../hooks/useMediaPlayer.js';
 import { socket } from '../../services/socket.js';
+import { clockSync } from '../../services/clockSync.js';
 import { cn } from '../../lib/cn.js';
 import { formatTime, providerLabel } from '../../lib/format.js';
 import { Waveform } from '../Waveform.js';
@@ -66,6 +67,7 @@ export function NowPlayingCard({
 }: NowPlayingCardProps) {
   const [isSyncing, setIsSyncing] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [nudgeMs, setNudgeMs] = useState(clockSync.getNudge());
   const stageRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -681,29 +683,62 @@ export function NowPlayingCard({
 
       {/* ------------------------------------------------------------- utils -- */}
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-sand bg-paper px-3 py-2">
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => onVolumeChange(volume === 0 ? 0.75 : 0)}
-            className="icon-btn h-8 w-8"
-            aria-label={volume === 0 ? 'Unmute' : 'Mute'}
-          >
-            {volume === 0 ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
-          </button>
-          <input
-            type="range"
-            min={0}
-            max={1}
-            step={0.01}
-            value={volume}
-            onChange={(event) => onVolumeChange(Number(event.target.value))}
-            className="slider w-20 sm:w-28"
-            style={{ ['--slider-progress' as string]: `${Math.round(volume * 100)}%` }}
-            aria-label="Local volume"
-          />
-          <span className="hidden font-mono text-[10px] text-taupe sm:inline">
-            {Math.round(volume * 100)}%
-          </span>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => onVolumeChange(volume === 0 ? 0.75 : 0)}
+              className="icon-btn h-8 w-8"
+              aria-label={volume === 0 ? 'Unmute' : 'Mute'}
+            >
+              {volume === 0 ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+            </button>
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.01}
+              value={volume}
+              onChange={(event) => onVolumeChange(Number(event.target.value))}
+              className="slider w-20 sm:w-28"
+              style={{ ['--slider-progress' as string]: `${Math.round(volume * 100)}%` }}
+              aria-label="Local volume"
+            />
+            <span className="hidden font-mono text-[10px] text-taupe sm:inline">
+              {Math.round(volume * 100)}%
+            </span>
+          </div>
+
+          {/* Latency Nudge Offset (BeatSync control for bluetooth headphone lag) */}
+          <div className="flex items-center gap-0.5 rounded-lg border border-white/10 bg-white/[0.04] px-1.5 py-0.5 text-xs">
+            <button
+              type="button"
+              onClick={() => setNudgeMs(clockSync.nudge(-10))}
+              className="px-1 font-mono text-xs text-[#a8a29e] transition-colors hover:text-[#40E0D0] cursor-pointer"
+              title="Nudge audio -10ms (earlier)"
+            >
+              «
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                clockSync.resetNudge();
+                setNudgeMs(0);
+              }}
+              className="px-1 font-mono text-[11px] text-[#fde5b7] hover:underline cursor-pointer"
+              title="Manual latency offset. Click to reset to +0ms"
+            >
+              {nudgeMs >= 0 ? `+${nudgeMs}ms` : `${nudgeMs}ms`}
+            </button>
+            <button
+              type="button"
+              onClick={() => setNudgeMs(clockSync.nudge(10))}
+              className="px-1 font-mono text-xs text-[#a8a29e] transition-colors hover:text-[#40E0D0] cursor-pointer"
+              title="Nudge audio +10ms (later)"
+            >
+              »
+            </button>
+          </div>
         </div>
 
         <div className="flex items-center gap-2">

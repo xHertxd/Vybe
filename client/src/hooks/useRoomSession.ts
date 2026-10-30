@@ -248,6 +248,7 @@ export function useRoomSession({ notify, onEntered, onLeft }: UseRoomSessionOpti
 
     const onJoined = (payload: JoinedPayload) => {
       clearPendingTimeout();
+      clockSync.syncNow();
       const username =
         payload.state.users.find((user) => user.id === payload.user.id)?.username ||
         getSavedUsername();

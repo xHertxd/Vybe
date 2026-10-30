@@ -560,6 +560,12 @@ socket.on('room:make_admin', (payload: { roomCode?: string; targetUserId?: strin
     socket.on('playback:force_sync', (payload = {}) => {
       try {
         const session = requireSession(socket, (payload as { roomCode?: string }).roomCode);
+        const position = roomManager.authoritativePosition(session.roomCode);
+        const now = Date.now();
+        io.to(session.roomCode).emit('playback:instant_sync', {
+          position,
+          serverTimestamp: now,
+        });
         roomManager.forceSync(session.roomCode, session.userId);
       } catch (error) {
         emitError(socket, error);

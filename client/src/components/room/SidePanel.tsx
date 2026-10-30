@@ -74,6 +74,11 @@ export function SidePanel({
     y: number;
   } | null>(null);
 
+  const canControl =
+    isAdmin ||
+    room.settings.playbackControl === 'anyone' ||
+    !room.users.some((u) => u.isAdmin && u.isOnline);
+
   useEffect(() => {
     const handleClose = () => setContextMenu(null);
     if (contextMenu) {
@@ -198,14 +203,14 @@ export function SidePanel({
                         <button
                           type="button"
                           onClick={() => {
-                            if (!isAdmin) {
-                              notify('Admin only', 'Only the room admin can jump between tracks.', 'info');
+                            if (!canControl) {
+                              notify('Permissions required', 'Playback control is currently restricted to room host.', 'info');
                               return;
                             }
                             socket.emit('queue:play_index', { roomCode: room.roomCode, index });
                           }}
                           className="relative h-10 w-10 flex-none overflow-hidden rounded-md bg-linen"
-                          title={isAdmin ? `Play ${item.title}` : item.title}
+                          title={canControl ? `Play ${item.title}` : item.title}
                         >
                           <img src={item.thumbnail} alt="" className="h-full w-full object-cover" loading="lazy" />
                           <span
@@ -255,7 +260,7 @@ export function SidePanel({
                           {item.duration > 0 ? formatTime(item.duration) : '--:--'}
                         </span>
 
-                        {isAdmin && (
+                        {canControl && (
                           <div className="absolute right-1 top-1/2 hidden -translate-y-1/2 items-center gap-0.5 rounded-md border border-sand bg-cream p-0.5 shadow-sm group-hover:flex">
                             <button
                               type="button"
@@ -302,7 +307,7 @@ export function SidePanel({
                 {room.queue.length} {room.queue.length === 1 ? 'track' : 'tracks'}
                 {totalDuration > 0 ? ` · ${formatTime(totalDuration)}` : ''}
               </span>
-              {isAdmin && room.queue.length > 0 && (
+              {canControl && room.queue.length > 0 && (
                 <button
                   type="button"
                   onClick={onRequestClear}
@@ -314,7 +319,7 @@ export function SidePanel({
               )}
             </div>
             <p className="mt-1.5 text-[9.5px] leading-relaxed text-clay">
-              {isAdmin ? 'Click a track to jump to it. Hover for reorder controls.' : 'Only the admin can change this queue.'}
+              {canControl ? 'Click a track to jump to it. Hover for reorder controls.' : 'Only authorized users can change this queue.'}
             </p>
           </div>
         </>

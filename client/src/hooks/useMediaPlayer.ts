@@ -86,6 +86,8 @@ export function useMediaPlayer({
     setError(null);
     setPhase('loading');
     let cancelled = false;
+    const initialNow = clockSync.getServerNow();
+    const initialTarget = positionAt(playbackRef.current, initialNow);
 
     if (track.provider === 'audio') {
       const src = audioSource(track);
@@ -110,6 +112,9 @@ export function useMediaPlayer({
           setPhase('error');
         }
       );
+      if (initialTarget > 0) {
+        adapter.seek(initialTarget);
+      }
       adapterRef.current = adapter;
       if (adapter.isReady()) setPhase('ready');
       setAdapterTick((tick) => tick + 1);
@@ -122,6 +127,7 @@ export function useMediaPlayer({
       createYouTubeAdapter(
         host,
         track.mediaId,
+        initialTarget,
         () => {
           setPhase('ready');
           setAdapterTick((tick) => tick + 1);
@@ -218,53 +224,44 @@ export function useMediaPlayer({
 
         if (playback.status === 'playing') {
           const isAlreadyPlaying = activeAdapter.isPlaying ? activeAdapter.isPlaying() : false;
-          const isYouTube = activeAdapter instanceof YouTubeAdapter;
-
-          // For YouTube: start directly to preserve user activation gesture without showing the YouTube play button!
-          if (isYouTube && !isAlreadyPlaying) {
-            if (target > 0.4) {
-              activeAdapter.seek(target);
-              lastSeekTime.current = Date.now();
-            }
-            activeAdapter.play();
-            setPhase('ready');
-            return;
-          }
-
-          // If track changed or playback just started, honour scheduledStartTime
-          if ((statusChanged || trackChanged || !isAlreadyPlaying) && wait > 40) {
-            activeAdapter.pause();
-            activeAdapter.seek(target);
-            lastSeekTime.current = Date.now();
-            setCurrentTime(target);
-            startTimer.current = setTimeout(() => {
-              adapterRef.current?.setRate(1);
-              void Promise.resolve(adapterRef.current?.play()).catch(() => {
-                setPhase('needs-interaction');
-              });
-            }, wait);
-            return;
-          }
-
           const currentPos = activeAdapter.getTime();
           const discrepancy = Math.abs(currentPos - target);
 
-          if (!isAlreadyPlaying) {
-            if (discrepancy > 0.6) {
-              activeAdapter.seek(target);
-              lastSeekTime.current = Date.now();
-            }
-            await activeAdapter.play();
-            setPhase('ready');
-          } else if (discrepancy > 1.8 && Date.now() - lastSeekTime.current > 3000) {
-            // Explicit user scrubbing/seek action while playing
+          // 1. Initial play, track switch, or device joining mid-playback:
+          if (!isAlreadyPlaying || trackChanged) {
             activeAdapter.seek(target);
             lastSeekTime.current = Date.now();
+            setCurrentTime(target);
+
+            if (wait > 40) {
+              activeAdapter.pause();
+              startTimer.current = setTimeout(() => {
+                adapterRef.current?.setRate(1);
+                void Promise.resolve(adapterRef.current?.play()).catch(() => {
+                  setPhase('needs-interaction');
+                });
+              }, wait);
+            } else {
+              activeAdapter.setRate(1);
+              void Promise.resolve(activeAdapter.play()).catch(() => {
+                setPhase('needs-interaction');
+              });
+            }
+            setPhase('ready');
+            return;
+          }
+
+          // 2. Authoritative update received while already playing (e.g. seek, force_sync, or status update):
+          if (statusChanged || discrepancy > 0.15) {
+            activeAdapter.seek(target);
+            lastSeekTime.current = Date.now();
+            activeAdapter.setRate(1);
+            setCurrentTime(target);
           }
         } else {
           // Status is paused or stopped
           activeAdapter.pause();
-          if (Math.abs(activeAdapter.getTime() - target) > 0.4) {
+          if (Math.abs(activeAdapter.getTime() - target) > 0.08) {
             activeAdapter.seek(target);
             lastSeekTime.current = Date.now();
           }
@@ -279,7 +276,36 @@ export function useMediaPlayer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playback.version, playback.status, playback.currentTrack?.id, adapterTick, track?.id]);
 
-  // Drift detection + gentle correction.
+  // Instant broadcast sync: snaps all devices across the room at the exact same millisecond
+  useEffect(() => {
+    const onInstantSync = (payload: { position: number; serverTimestamp: number }) => {
+      const activeAdapter = adapterRef.current;
+      if (!activeAdapter || !activeAdapter.isReady()) return;
+
+      const serverNow = clockSync.getServerNow();
+      const elapsed = Math.max(0, serverNow - payload.serverTimestamp) / 1000;
+      const target = Math.max(0, payload.position + elapsed);
+
+      lastSeekTime.current = Date.now();
+      activeAdapter.seek(target);
+      activeAdapter.setRate(1);
+      setCurrentTime(target);
+
+      if (playbackRef.current.status === 'playing') {
+        const isPlaying = activeAdapter.isPlaying ? activeAdapter.isPlaying() : false;
+        if (!isPlaying) {
+          void Promise.resolve(activeAdapter.play()).catch(() => {});
+        }
+      }
+    };
+
+    socket.on('playback:instant_sync', onInstantSync);
+    return () => {
+      socket.off('playback:instant_sync', onInstantSync);
+    };
+  }, []);
+
+  // Continuous micro-drift detection + instant alignment (BeatSync engine)
   useEffect(() => {
     if (!track) return;
     let disposed = false;
@@ -329,21 +355,26 @@ export function useMediaPlayer({
         const timeSinceLastSeek = Date.now() - lastSeekTime.current;
 
         if (isYouTube) {
-          // YouTube: Only seek on large desync (> 1.5s) with a 4s cooldown to completely prevent stuttering!
-          if (absDrift > 1.5 && timeSinceLastSeek > 4000) {
+          // YouTube: Seek if drift > 300ms with 1.5s cooldown
+          if (absDrift > 0.30 && timeSinceLastSeek > 1500) {
             adapter.seek(target);
             lastSeekTime.current = Date.now();
+            adapter.setRate(1);
+          } else if (absDrift > 0.08) {
+            adapter.setRate(drift < 0 ? 1.05 : 0.95);
+          } else {
             adapter.setRate(1);
           }
         } else {
-          // HTML5 Audio: Smooth pitch-neutral rate correction for continuous, stutter-free playback!
-          if (absDrift > 1.5 && timeSinceLastSeek > 4000) {
+          // Howler Audio / WebAudio: Sample-accurate sync!
+          if (absDrift > 0.12 && timeSinceLastSeek > 1000) {
+            // Immediate snap seek for desync > 120ms
             adapter.seek(target);
             lastSeekTime.current = Date.now();
             adapter.setRate(1);
-          } else if (absDrift > 0.06) {
-            // Adjust speed by only 3% (inaudible pitch change, zero buffering interruption)
-            adapter.setRate(drift < 0 ? 1.03 : 0.97);
+          } else if (absDrift > 0.025) {
+            // Fast 5% pitch-neutral rate correction for subtle 25ms-120ms jitter (catches up in < 500ms!)
+            adapter.setRate(drift < 0 ? 1.05 : 0.95);
           } else {
             adapter.setRate(1);
           }
@@ -351,7 +382,7 @@ export function useMediaPlayer({
 
         if (adapter.isPlaying && !adapter.isPlaying()) {
           notPlayingTicks.current += 1;
-          if (notPlayingTicks.current >= 2) {
+          if (notPlayingTicks.current >= 5) {
             setPhase('needs-interaction');
             try {
               void Promise.resolve(adapter.play());
@@ -411,7 +442,7 @@ export function useMediaPlayer({
           });
         }
       });
-    }, 400);
+    }, 250);
 
     return () => {
       disposed = true;

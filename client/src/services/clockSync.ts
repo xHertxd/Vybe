@@ -77,8 +77,31 @@ class ClockSync {
     socket.emit('sync:ping', { clientTime: Date.now() });
   }
 
+  private manualOffset = typeof window !== 'undefined' ? Number(localStorage.getItem('vybe_manual_nudge_ms') || 0) : 0;
+
+  public getNudge(): number {
+    return this.manualOffset;
+  }
+
+  public nudge(deltaMs: number): number {
+    this.manualOffset = Math.max(-500, Math.min(500, this.manualOffset + deltaMs));
+    try {
+      localStorage.setItem('vybe_manual_nudge_ms', String(this.manualOffset));
+    } catch {}
+    this.emit();
+    return this.manualOffset;
+  }
+
+  public resetNudge(): void {
+    this.manualOffset = 0;
+    try {
+      localStorage.removeItem('vybe_manual_nudge_ms');
+    } catch {}
+    this.emit();
+  }
+
   public getServerNow(): number {
-    return Date.now() + this.offset;
+    return Date.now() + this.offset + this.manualOffset;
   }
 
   public getMetrics(): { offset: number; rtt: number; ready: boolean } {
