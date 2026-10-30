@@ -349,14 +349,16 @@ export function useMediaPlayer({
         if (adapter.isPlaying && !adapter.isPlaying()) {
           notPlayingTicks.current += 1;
           if (notPlayingTicks.current >= 2) {
+            setPhase('needs-interaction');
             try {
-              void Promise.resolve(adapter.play()).catch(() => setPhase('needs-interaction'));
-            } catch {
-              setPhase('needs-interaction');
-            }
+              void Promise.resolve(adapter.play());
+            } catch {}
           }
         } else {
           notPlayingTicks.current = 0;
+          if (phase === 'needs-interaction') {
+            setPhase('ready');
+          }
         }
 
         if (
@@ -387,13 +389,47 @@ export function useMediaPlayer({
           });
         }
       });
-    }, 1000);
+    }, 400);
 
     return () => {
       disposed = true;
       window.clearInterval(interval);
     };
-  }, [roomCode, track]);
+  }, [roomCode, track, phase]);
+
+  // MediaSession API keeps audio alive on iOS & Android in background/lockscreen.
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !('mediaSession' in navigator) || !track) return;
+    try {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: track.title,
+        artist: track.artist || 'Vybe',
+        album: 'Vybe Live Session',
+        artwork: track.thumbnail
+          ? [
+              { src: track.thumbnail, sizes: '96x96', type: 'image/jpeg' },
+              { src: track.thumbnail, sizes: '256x256', type: 'image/jpeg' },
+              { src: track.thumbnail, sizes: '512x512', type: 'image/jpeg' },
+            ]
+          : [],
+      });
+      navigator.mediaSession.playbackState = playback.status === 'playing' ? 'playing' : 'paused';
+
+      navigator.mediaSession.setActionHandler('play', () => {
+        void activate();
+        socket.emit('playback:play', { roomCode });
+      });
+      navigator.mediaSession.setActionHandler('pause', () => {
+        socket.emit('playback:pause', { roomCode });
+      });
+      navigator.mediaSession.setActionHandler('nexttrack', () => {
+        socket.emit('playback:next', { roomCode });
+      });
+      navigator.mediaSession.setActionHandler('previoustrack', () => {
+        socket.emit('playback:prev', { roomCode });
+      });
+    } catch {}
+  }, [track, playback.status, roomCode]);
 
   // Surface a real duration for sources that cannot report one up front.
   useEffect(() => {
@@ -438,8 +474,15 @@ export function useMediaPlayer({
     }
 
     try {
+      const now = clockSync.getServerNow();
+      const target = positionAt(playbackRef.current, now);
+      if (target > 0.4) {
+        adapter?.seek(target);
+        lastSeekTime.current = Date.now();
+      }
       await adapter?.play();
       setPhase('ready');
+      setAdapterTick((tick) => tick + 1);
     } catch {
       setPhase('needs-interaction');
     }
@@ -465,5 +508,6 @@ export function useMediaPlayer({
     driftMs,
     activate,
     isReady: phase === 'ready',
+    isPlayingLocally: adapterRef.current?.isPlaying ? adapterRef.current.isPlaying() : (playback.status === 'playing' && phase === 'ready'),
   };
 }

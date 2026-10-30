@@ -1,9 +1,11 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import {
   ExternalLink,
   Loader2,
   Lock,
+  Maximize,
   Maximize2,
+  Minimize,
   Minimize2,
   Music2,
   Pause,
@@ -63,6 +65,69 @@ export function NowPlayingCard({
   notify,
 }: NowPlayingCardProps) {
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const stageRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const onFsChange = () => {
+      setIsFullscreen(Boolean(document.fullscreenElement));
+    };
+    document.addEventListener('fullscreenchange', onFsChange);
+    document.addEventListener('webkitfullscreenchange', onFsChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', onFsChange);
+      document.removeEventListener('webkitfullscreenchange', onFsChange);
+    };
+  }, []);
+
+  const handleToggleFullscreen = () => {
+    if (!isFullscreen) {
+      if (youtubeMode === 'audio') {
+        onYouTubeModeChange('video');
+      }
+      setIsFullscreen(true);
+      try {
+        if (stageRef.current?.requestFullscreen) {
+          void stageRef.current.requestFullscreen();
+        } else if ((stageRef.current as any)?.webkitRequestFullscreen) {
+          void (stageRef.current as any).webkitRequestFullscreen();
+        }
+      } catch {}
+    } else {
+      setIsFullscreen(false);
+      try {
+        if (document.fullscreenElement) {
+          void document.exitFullscreen();
+        }
+      } catch {}
+    }
+  };
+
+  const handleMainPlay = async () => {
+    if (!track) return;
+
+    // 1. Direct synchronous activation inside user click gesture!
+    try {
+      await player.activate();
+    } catch {}
+
+    // 2. Admin toggles room state; connected devices confirm sync
+    if (isAdmin) {
+      emit(isPlaying ? 'playback:pause' : 'playback:play');
+    } else {
+      if (!isPlaying) {
+        notify?.('Paused by Host', 'Waiting for room host to start playback.', 'info');
+      } else {
+        notify?.('Locked in Sync', 'Your device is locked to room playback.', 'success');
+      }
+    }
+  };
+
+  const handleStageClick = () => {
+    if (player.phase === 'needs-interaction' || (!player.isPlayingLocally && isPlaying)) {
+      void player.activate();
+    }
+  };
 
   const handleForceSync = () => {
     setIsSyncing(true);
@@ -149,6 +214,15 @@ export function NowPlayingCard({
           )}
           <button
             type="button"
+            onClick={handleToggleFullscreen}
+            className="h-8 w-8 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.03] text-[#a8a29e] hover:text-white hover:border-white/20 transition-all inline-flex cursor-pointer"
+            title={isFullscreen ? 'Exit full screen' : 'Full screen video (only video visible)'}
+            aria-label={isFullscreen ? 'Exit full screen' : 'Full screen video'}
+          >
+            {isFullscreen ? <Minimize className="h-3.5 w-3.5" /> : <Maximize className="h-3.5 w-3.5" />}
+          </button>
+          <button
+            type="button"
             onClick={onToggleTheater}
             className="hidden h-8 w-8 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.03] text-[#a8a29e] hover:text-white hover:border-white/20 transition-all sm:inline-flex"
             title={theater ? 'Exit theater mode' : 'Theater mode'}
@@ -161,11 +235,32 @@ export function NowPlayingCard({
 
       {/* ------------------------------------------------------------- stage -- */}
       <div
+        ref={stageRef}
+        onClick={handleStageClick}
         className={cn(
-          'group relative overflow-hidden rounded-[16px] bg-ink ring-1 ring-sand',
-          theater ? 'aspect-[16/8] sm:aspect-[16/7]' : 'aspect-[16/10] sm:aspect-[16/9]'
+          'group relative overflow-hidden bg-ink ring-1 ring-sand transition-all',
+          isFullscreen
+            ? 'fixed inset-0 z-[99999] w-screen h-screen rounded-none ring-0 flex items-center justify-center bg-black'
+            : cn(
+                'rounded-[16px]',
+                theater ? 'aspect-[16/8] sm:aspect-[16/7]' : 'aspect-[16/10] sm:aspect-[16/9]'
+              )
         )}
       >
+        {isFullscreen && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleToggleFullscreen();
+            }}
+            className="absolute top-5 right-5 z-50 flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-black/80 hover:bg-black text-white border border-white/20 backdrop-blur-md text-xs transition-opacity hover:opacity-100 opacity-70 cursor-pointer shadow-2xl"
+          >
+            <Minimize className="h-4 w-4" />
+            <span>Exit Full Screen</span>
+          </button>
+        )}
+
         {track ? (
           <>
             <img
@@ -180,13 +275,13 @@ export function NowPlayingCard({
               <div
                 ref={player.youtubeHostRef}
                 className={cn(
-                  'absolute inset-0 h-full w-full',
-                  youtubeMode === 'audio' && 'pointer-events-none opacity-0'
+                  'absolute inset-0 h-full w-full pointer-events-none overflow-hidden scale-[1.04]',
+                  youtubeMode === 'audio' && !isFullscreen ? 'opacity-[0.01]' : 'opacity-100'
                 )}
               />
             )}
 
-            {track.provider === 'youtube' && youtubeMode === 'video' ? (
+            {track.provider === 'youtube' && (youtubeMode === 'video' || isFullscreen) ? (
               <div className="absolute inset-0 z-10 pointer-events-none" />
             ) : (
               <div className="absolute inset-0 flex items-center justify-center">
@@ -212,7 +307,12 @@ export function NowPlayingCard({
             )}
 
             {/* corner meta */}
-            <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex items-end justify-between gap-3 bg-gradient-to-t from-ink/85 via-ink/20 to-transparent p-3 sm:p-4">
+            <div
+              className={cn(
+                'pointer-events-none absolute inset-x-0 bottom-0 z-20 flex items-end justify-between gap-3 bg-gradient-to-t from-ink/85 via-ink/20 to-transparent p-3 sm:p-4 transition-opacity',
+                isFullscreen && 'opacity-0 group-hover:opacity-100'
+              )}
+            >
               <div className="min-w-0">
                 <p className="text-[9px] font-medium uppercase tracking-[0.2em] text-cream/50">
                   {isPlaying ? 'Playing live' : 'Standing by'}
@@ -495,16 +595,25 @@ export function NowPlayingCard({
 
         <button
           type="button"
-          onClick={() => emit(isPlaying ? 'playback:pause' : 'playback:play')}
-          disabled={!isAdmin || !track}
+          onClick={handleMainPlay}
+          disabled={!track}
           className={cn(
             'grid h-14 w-14 place-items-center rounded-full bg-[#fde5b7] text-black transition-all shadow-lg',
-            'hover:bg-[#fee8c8] hover:scale-105 active:scale-95 disabled:opacity-40 disabled:hover:scale-100 cursor-pointer'
+            'hover:bg-[#fee8c8] hover:scale-105 active:scale-95 disabled:opacity-40 disabled:hover:scale-100 cursor-pointer',
+            (!player.isPlayingLocally && isPlaying) && 'ring-4 ring-[#40E0D0]/50 animate-pulse'
           )}
-          title={isAdmin ? (isPlaying ? 'Pause' : 'Play') : 'Only the admin can control playback'}
+          title={
+            isAdmin
+              ? isPlaying
+                ? 'Pause playback'
+                : 'Play playback'
+              : isPlaying
+              ? (player.isPlayingLocally ? 'In sync with host' : 'Tap to start synchronized audio')
+              : 'Host paused playback'
+          }
           aria-label={isPlaying ? 'Pause' : 'Play'}
         >
-          {isPlaying ? (
+          {isPlaying && (isAdmin || player.isPlayingLocally) ? (
             <Pause className="h-6 w-6 fill-black text-black" />
           ) : (
             <Play className="ml-0.5 h-6 w-6 fill-black text-black" />

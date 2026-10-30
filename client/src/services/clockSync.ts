@@ -45,7 +45,7 @@ class ClockSync {
     socket.on('connect', () => {
       this.pingBurst();
       if (!this.interval) {
-        this.interval = setInterval(() => this.ping(), 5_000);
+        this.interval = setInterval(() => this.ping(), 3_000);
       }
     });
 
@@ -56,8 +56,12 @@ class ClockSync {
 
     if (socket.connected) {
       this.pingBurst();
-      this.interval = setInterval(() => this.ping(), 5_000);
+      this.interval = setInterval(() => this.ping(), 3_000);
     }
+  }
+
+  public syncNow(): void {
+    this.pingBurst();
   }
 
   private pingBurst(): void {

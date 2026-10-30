@@ -11,6 +11,7 @@ import {
 import type { RoomState, RoomUser } from '../types.js';
 import { useMediaPlayer } from '../hooks/useMediaPlayer.js';
 import { clockSync } from '../services/clockSync.js';
+import { keepAlive } from '../services/keepAlive.js';
 import { socket } from '../services/socket.js';
 import { spotify } from '../services/spotify.js';
 import { Brand } from '../components/Brand.js';
@@ -71,6 +72,13 @@ export function MusicRoomPage({
   });
 
   useEffect(() => clockSync.subscribe(setClock), []);
+
+  useEffect(() => {
+    keepAlive.start(room.roomCode);
+    return () => {
+      keepAlive.stop();
+    };
+  }, [room.roomCode]);
 
   useEffect(() => {
     localStorage.setItem(THEATER_KEY, theater ? '1' : '0');

@@ -97,6 +97,8 @@ interface YTPlayer {
   getPlayerState: () => number;
   setPlaybackRate: (rate: number) => void;
   setVolume: (volume: number) => void;
+  unMute?: () => void;
+  mute?: () => void;
   destroy: () => void;
   loadVideoById?: (id: string) => void;
 }
@@ -264,6 +266,12 @@ export class YouTubeAdapter implements PlayerAdapter {
 
   public play(): void {
     try {
+      if (typeof this.player?.unMute === 'function') {
+        this.player.unMute();
+      }
+      if (typeof this.player?.setVolume === 'function') {
+        this.player.setVolume(this.volume);
+      }
       if (typeof this.player?.playVideo === 'function') {
         this.player.playVideo();
       }
@@ -347,14 +355,18 @@ export function createYouTubeAdapter(
           playerVars: {
             autoplay: 1,
             controls: 0,
+            showinfo: 0,
+            rel: 0,
+            iv_load_policy: 3,
+            cc_load_policy: 0,
             disablekb: 1,
             fs: 0,
             playsinline: 1,
             modestbranding: 1,
-            rel: 0,
             enablejsapi: 1,
-            iv_load_policy: 3,
+            autohide: 1,
             origin: window.location.origin,
+            widget_referrer: window.location.origin,
           },
           events: {
             onReady: () => {
@@ -363,6 +375,7 @@ export function createYouTubeAdapter(
                 if (iframe) {
                   iframe.setAttribute('allow', 'autoplay; encrypted-media; fullscreen; picture-in-picture');
                   iframe.setAttribute('allowfullscreen', '1');
+                  iframe.style.pointerEvents = 'none';
                 }
               } catch {}
               if (adapter) {

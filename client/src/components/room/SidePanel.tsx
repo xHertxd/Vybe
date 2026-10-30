@@ -433,13 +433,7 @@ export function SidePanel({
             })}
           </ul>
 
-          <div className="mt-4 rounded-lg border border-sand bg-paper p-3">
-            <p className="text-[10px] font-medium text-slate">Seats survive refresh</p>
-            <p className="mt-1 text-[9.5px] leading-relaxed text-taupe">
-              A dropped listener keeps their name for 25 seconds. A deliberate leave frees it
-              immediately.
-            </p>
-          </div>
+
         </div>
       )}
 

@@ -450,6 +450,19 @@ export function createVybeServer() {
       }
     );
 
+    socket.on('room:get_state', (payload: { roomCode?: string } = {}) => {
+      try {
+        const code = payload.roomCode || sessions.get(socket.id)?.roomCode;
+        if (!code) return;
+        const state = roomManager.getState(code);
+        if (state) {
+          socket.emit('room:state', state);
+        }
+      } catch (error) {
+        emitError(socket, error);
+      }
+    });
+
     socket.on('room:leave', (payload: { roomCode?: string } = {}) => {
       try {
         const session = requireSession(socket, payload.roomCode);
