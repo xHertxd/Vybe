@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Pencil, Check, AlertCircle, ArrowRight, Shuffle, Loader2 } from 'lucide-react';
+import { Pencil, Check, AlertCircle, ArrowRight, Shuffle, Loader2, Sparkles, Radio } from 'lucide-react';
 import { Footer } from '../components/Footer.js';
 
 interface RoomEntryPageProps {
@@ -71,7 +71,6 @@ export function RoomEntryPage({
   initialUsername,
   initialCode,
 }: RoomEntryPageProps) {
-  // Automatically generate random alphabetic name on initial load
   const [username, setUsername] = useState<string>(() => {
     return initialUsername && USERNAME_RE.test(initialUsername)
       ? initialUsername
@@ -95,14 +94,12 @@ export function RoomEntryPage({
   const currentCode = digits.join('');
   const isFullCode = currentCode.length === 6 && /^\d{6}$/.test(currentCode);
 
-  // Directly enter the room or create it if it doesn't exist
   const submitJoin = (code: string, user: string) => {
     unlockAudio();
     setIsAutoSubmitting(true);
     onJoin(code, user);
   };
 
-  // If initialCode was supplied in direct URL link, directly enter the room!
   useEffect(() => {
     if (initialCode && /^\d{6}$/.test(initialCode) && !autoJoinTriggered.current) {
       autoJoinTriggered.current = true;
@@ -148,7 +145,6 @@ export function RoomEntryPage({
         inputRefs.current[index + 1]?.focus();
       }
 
-      // If all 6 digits entered: DIRECTLY make user enter the room (or create if not exist)!
       const fullCode = newDigits.join('');
       if (fullCode.length === 6 && /^\d{6}$/.test(fullCode)) {
         setTimeout(() => {
@@ -178,7 +174,6 @@ export function RoomEntryPage({
       }
       setDigits(newDigits);
 
-      // If all 6 digits pasted: DIRECTLY make user enter the room!
       if (pasted.length === 6) {
         setTimeout(() => {
           submitJoin(pasted, username);
@@ -211,19 +206,33 @@ export function RoomEntryPage({
   };
 
   return (
-    <div className="relative min-h-screen w-full bg-[#171719] text-[#fde5b7] flex flex-col items-center justify-between overflow-hidden select-none px-4 py-6">
-      {/* Top Left Minimalist Brand Badge */}
-      <header className="w-full max-w-6xl flex items-center justify-between z-20">
-        <div className="bg-[#fde5b7] text-black px-8 sm:px-12 py-3 sm:py-4 rounded-2xl sm:rounded-3xl flex items-center shadow-md">
-          <span className="font-brand font-black text-3xl sm:text-4xl tracking-tight select-none">
+    <div className="relative min-h-screen w-full bg-[#121214] text-[#F5F5DC] flex flex-col justify-between overflow-hidden select-none px-4 py-6 font-sans">
+      {/* Liquid Glass Background Glow Orbs */}
+      <div className="pointer-events-none absolute -top-40 -right-40 h-96 w-96 rounded-full bg-[#40E0D0]/10 blur-[130px]" />
+      <div className="pointer-events-none absolute -bottom-40 -left-40 h-96 w-96 rounded-full bg-[#fde5b7]/10 blur-[140px]" />
+      <div className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-[500px] w-[500px] rounded-full bg-white/[0.02] blur-[150px]" />
+
+      {/* Top Header - Liquid Glass Badge */}
+      <header className="w-full max-w-6xl mx-auto flex items-center justify-between z-20">
+        <div className="flex items-center gap-3 px-5 py-2.5 rounded-2xl bg-white/[0.04] backdrop-blur-2xl border border-white/[0.09] shadow-[0_8px_32px_rgba(0,0,0,0.4),inset_0_1px_0_0_rgba(255,255,255,0.15)]">
+          <div className="h-2.5 w-2.5 rounded-full bg-[#40E0D0] animate-pulse shadow-[0_0_8px_#40E0D0]" />
+          <span className="font-brand font-black text-2xl sm:text-3xl tracking-tight text-[#fde5b7]">
             VYBE
           </span>
         </div>
+
+        <div className="hidden sm:flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/[0.03] backdrop-blur-xl border border-white/[0.06] text-[11px] text-[#a8a29e]">
+          <Radio className="w-3.5 h-3.5 text-[#40E0D0]" />
+          <span>Real-time Audio Sync</span>
+        </div>
       </header>
 
-      {/* Main Center Area */}
-      <main className="w-full max-w-[480px] z-10 flex flex-col items-center my-auto">
-        <div className="w-full bg-[#242427] rounded-[36px] sm:rounded-[40px] p-7 sm:p-11 shadow-2xl flex flex-col items-center border border-white/[0.08]">
+      {/* Main Center Area - Liquid Glass Card */}
+      <main className="w-full max-w-[500px] mx-auto z-10 flex flex-col items-center my-auto py-4">
+        <div className="w-full relative rounded-[38px] sm:rounded-[44px] p-7 sm:p-11 bg-white/[0.035] backdrop-blur-3xl border border-white/[0.12] shadow-[0_24px_64px_rgba(0,0,0,0.65),inset_0_1px_1px_rgba(255,255,255,0.2)] flex flex-col items-center">
+          {/* Subtle Glass Highlight Line */}
+          <div className="absolute top-0 left-12 right-12 h-[1px] bg-gradient-to-r from-transparent via-white/30 to-transparent" />
+
           {/* 6 Digit Input Boxes */}
           <div
             className="flex items-center justify-center gap-2 sm:gap-3.5 mb-7 w-full"
@@ -243,16 +252,16 @@ export function RoomEntryPage({
                 onChange={(e) => handleDigitChange(idx, e.target.value)}
                 onKeyDown={(e) => handleKeyDown(idx, e)}
                 disabled={isAutoSubmitting}
-                className="w-11 h-14 sm:w-14 sm:h-16 md:w-15 md:h-17 bg-[#fde5b7] text-black font-brand font-black text-2xl sm:text-3xl md:text-4xl text-center rounded-xl sm:rounded-2xl focus:outline-none focus:ring-4 focus:ring-[#fde5b7]/50 shadow-md transition-all caret-transparent select-none cursor-text disabled:opacity-75"
+                className="w-11 h-14 sm:w-14 sm:h-16 md:w-15 md:h-17 bg-[#fde5b7] text-[#141416] font-brand font-black text-2xl sm:text-3xl md:text-4xl text-center rounded-2xl focus:outline-none focus:ring-4 focus:ring-[#40E0D0]/50 shadow-[0_8px_20px_rgba(0,0,0,0.35),inset_0_2px_4px_rgba(255,255,255,0.4)] transition-all caret-transparent select-none cursor-text disabled:opacity-75"
               />
             ))}
           </div>
 
           {/* Username Section: "You will join as username ✏️ 🎲" */}
           <div className="flex items-center justify-center mb-8 text-[#fde5b7] text-sm sm:text-base font-medium">
-            <span className="opacity-80 mr-1.5">You will join as</span>
+            <span className="opacity-75 mr-2">You will join as</span>
             {isEditingUsername ? (
-              <div className="flex items-center gap-1.5 bg-black/40 px-3 py-1 rounded-xl border border-[#fde5b7]/40">
+              <div className="flex items-center gap-1.5 bg-black/50 backdrop-blur-xl px-3 py-1 rounded-xl border border-[#40E0D0]/50">
                 <input
                   type="text"
                   autoFocus
@@ -270,10 +279,10 @@ export function RoomEntryPage({
                 <button
                   type="button"
                   onClick={handleSaveUsername}
-                  className="p-1 hover:text-white transition-colors"
+                  className="p-1 text-[#40E0D0] hover:text-white transition-colors"
                   title="Save Username"
                 >
-                  <Check className="w-4 h-4 text-[#fde5b7]" />
+                  <Check className="w-4 h-4" />
                 </button>
               </div>
             ) : (
@@ -284,19 +293,19 @@ export function RoomEntryPage({
                     setTempUsername(username);
                     setIsEditingUsername(true);
                   }}
-                  className="group flex items-center gap-1.5 cursor-pointer"
+                  className="group flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] backdrop-blur-md transition-all cursor-pointer"
                   title="Click to edit username"
                 >
-                  <span className="underline decoration-[#fde5b7]/60 underline-offset-4 font-semibold text-[#fde5b7] group-hover:text-white transition-colors">
+                  <span className="font-semibold text-[#fde5b7] group-hover:text-white transition-colors">
                     {username}
                   </span>
-                  <Pencil className="w-3.5 h-3.5 text-[#fde5b7] opacity-80 group-hover:opacity-100 group-hover:scale-110 transition-all" />
+                  <Pencil className="w-3.5 h-3.5 text-[#40E0D0] opacity-80 group-hover:opacity-100 group-hover:scale-110 transition-all" />
                 </button>
 
                 <button
                   type="button"
                   onClick={handleShuffleUsername}
-                  className="p-1 text-[#a8a29e] hover:text-[#fde5b7] transition-colors"
+                  className="p-1.5 rounded-full bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-[#a8a29e] hover:text-[#40E0D0] transition-colors"
                   title="Roll another random name"
                 >
                   <Shuffle className="w-3.5 h-3.5" />
@@ -307,7 +316,7 @@ export function RoomEntryPage({
 
           {/* Error Feedback */}
           {error && (
-            <div className="w-full mb-6 p-3 rounded-2xl bg-red-500/15 border border-red-500/30 flex items-start gap-2.5 text-xs text-red-200">
+            <div className="w-full mb-6 p-3 rounded-2xl bg-red-500/15 border border-red-500/30 flex items-start gap-2.5 text-xs text-red-200 backdrop-blur-md">
               <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
               <div className="leading-relaxed">{error}</div>
             </div>
@@ -320,11 +329,11 @@ export function RoomEntryPage({
                 type="button"
                 onClick={handleJoinManual}
                 disabled={isAutoSubmitting}
-                className="w-full py-4 px-8 rounded-full bg-[#1c1c1f] hover:bg-[#252528] active:scale-[0.98] text-[#fde5b7] font-bebas text-2xl sm:text-3xl tracking-widest transition-all shadow-xl border border-white/5 flex items-center justify-center gap-2 hover:border-[#fde5b7]/30 disabled:opacity-75"
+                className="w-full py-4 px-8 rounded-full bg-gradient-to-b from-[#252528] to-[#1c1c1f] hover:from-[#2e2e33] hover:to-[#222226] active:scale-[0.98] text-[#fde5b7] font-bebas text-2xl sm:text-3xl tracking-widest transition-all shadow-[0_12px_32px_rgba(0,0,0,0.5),inset_0_1px_1px_rgba(255,255,255,0.15)] border border-white/[0.1] flex items-center justify-center gap-2 hover:border-[#40E0D0]/50 disabled:opacity-75"
               >
                 {isAutoSubmitting ? (
                   <>
-                    <Loader2 className="w-5 h-5 text-[#fde5b7] animate-spin" />
+                    <Loader2 className="w-5 h-5 text-[#40E0D0] animate-spin" />
                     <span>ENTERING ROOM…</span>
                   </>
                 ) : (
@@ -347,18 +356,17 @@ export function RoomEntryPage({
             <button
               type="button"
               onClick={handleCreate}
-              className="w-full py-4 px-8 rounded-full bg-[#1c1c1f] hover:bg-[#252528] active:scale-[0.98] text-[#fde5b7] font-bebas text-2xl sm:text-3xl tracking-widest transition-all shadow-xl border border-white/5 flex items-center justify-center gap-2 hover:border-[#fde5b7]/30"
+              className="w-full py-4 px-8 rounded-full bg-[#fde5b7] hover:bg-[#ffecc7] active:scale-[0.98] text-[#141416] font-bebas text-2xl sm:text-3xl tracking-widest transition-all shadow-[0_12px_32px_rgba(253,229,183,0.25)] flex items-center justify-center gap-2"
             >
+              <Sparkles className="w-5 h-5 text-[#141416]" />
               <span>CREATE NEW ROOM</span>
             </button>
           )}
         </div>
       </main>
 
-      {/* Footer promoting Hertx */}
-      <footer className="w-full z-10 text-center">
-        <Footer />
-      </footer>
+      {/* Footer from xhertxd.me */}
+      <Footer />
     </div>
   );
 }

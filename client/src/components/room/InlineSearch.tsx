@@ -21,15 +21,6 @@ interface InlineSearchProps {
   notify: (title: string, description?: string, tone?: 'info' | 'success' | 'error') => void;
 }
 
-const POPULAR_CHIPS = [
-  'Starboy',
-  'Blinding Lights',
-  'Get Lucky',
-  'Viva La Vida',
-  'Levitating',
-  'Lofi Beats',
-];
-
 export function InlineSearch({ notify }: InlineSearchProps) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<MediaItemInput[]>([]);
@@ -102,7 +93,7 @@ export function InlineSearch({ notify }: InlineSearchProps) {
 
   return (
     <div ref={containerRef} className="relative w-full z-30">
-      {/* Search Input Bar */}
+      {/* Sleek Liquid Glass Search Input */}
       <div className="relative flex items-center">
         <Search className="absolute left-4 w-4 h-4 text-[#a8a29e] pointer-events-none" />
         <input
@@ -113,8 +104,8 @@ export function InlineSearch({ notify }: InlineSearchProps) {
             if (results.length === 0) setResults(CURATED_TRACKS.slice(0, 5));
           }}
           onChange={(e) => handleSearchChange(e.target.value)}
-          placeholder="Search songs, artists, or paste any YouTube / Spotify link..."
-          className="w-full pl-11 pr-10 py-3.5 rounded-2xl bg-[#262629] border border-white/10 text-white placeholder:text-[#a8a29e] text-sm focus:outline-none focus:border-[#fde5b7]/50 focus:ring-2 focus:ring-[#fde5b7]/10 transition-all shadow-lg"
+          placeholder="Search full songs, artists, YouTube, or Audius tracks..."
+          className="w-full pl-11 pr-24 py-3 rounded-2xl bg-white/[0.035] backdrop-blur-2xl border border-white/[0.09] text-white placeholder:text-[#a8a29e] text-xs sm:text-sm focus:outline-none focus:border-[#40E0D0]/60 focus:bg-white/[0.06] transition-all shadow-lg"
         />
         {query ? (
           <button
@@ -129,39 +120,22 @@ export function InlineSearch({ notify }: InlineSearchProps) {
             <X className="w-4 h-4" />
           </button>
         ) : (
-          <div className="absolute right-3.5 hidden sm:flex items-center gap-1 text-[11px] font-mono text-[#a8a29e] bg-black/30 px-2 py-0.5 rounded-md border border-white/5">
-            <Sparkles className="w-3 h-3 text-[#fde5b7]" />
-            <span>Library</span>
+          <div className="absolute right-3.5 hidden sm:flex items-center gap-1.5 text-[10px] font-mono text-[#a8a29e] bg-white/[0.04] px-2 py-0.5 rounded-lg border border-white/5">
+            <Sparkles className="w-3 h-3 text-[#40E0D0]" />
+            <span>Full Songs</span>
           </div>
         )}
       </div>
 
-      {/* Quick Search Chips */}
-      <div className="flex items-center gap-1.5 overflow-x-auto py-2 px-1 text-xs">
-        <span className="text-[10px] uppercase font-bold text-[#78716c] tracking-wider shrink-0 mr-1">
-          Quick play:
-        </span>
-        {POPULAR_CHIPS.map((chip) => (
-          <button
-            key={chip}
-            type="button"
-            onClick={() => handleSearchChange(chip)}
-            className="px-2.5 py-1 rounded-full bg-[#262629] border border-white/5 text-[#a8a29e] hover:text-[#fde5b7] hover:border-[#fde5b7]/30 transition-all shrink-0 text-xs"
-          >
-            {chip}
-          </button>
-        ))}
-      </div>
-
       {/* Expandable Dropdown Results */}
       {isExpanded && (
-        <div className="absolute top-full left-0 right-0 mt-2 p-3 rounded-2xl bg-[#262629] border border-white/10 shadow-2xl space-y-2 max-h-[380px] overflow-y-auto backdrop-blur-xl">
+        <div className="absolute top-full left-0 right-0 mt-2 p-3 rounded-2xl bg-[#1c1c1f]/95 border border-white/10 shadow-2xl space-y-2 max-h-[380px] overflow-y-auto backdrop-blur-3xl z-40">
           <div className="flex items-center justify-between px-2 text-xs text-[#a8a29e]">
             <span className="font-semibold uppercase tracking-wider text-[10px]">
               {query ? `Search Results (${results.length})` : 'Popular Tracks'}
             </span>
             {isSearching && (
-              <span className="flex items-center gap-1 text-[#fde5b7] text-xs">
+              <span className="flex items-center gap-1 text-[#40E0D0] text-xs">
                 <Loader2 className="w-3 h-3 animate-spin" />
                 Searching...
               </span>
@@ -172,7 +146,7 @@ export function InlineSearch({ notify }: InlineSearchProps) {
             {results.map((track, idx) => (
               <div
                 key={track.mediaId || idx}
-                className="group flex items-center justify-between p-2 rounded-xl bg-[#171719]/80 hover:bg-[#171719] border border-white/5 hover:border-white/15 transition-all gap-3"
+                className="group flex items-center justify-between p-2 rounded-xl bg-white/[0.02] hover:bg-white/[0.06] border border-white/5 hover:border-white/15 transition-all gap-3"
               >
                 <div className="flex items-center gap-2.5 min-w-0">
                   {track.thumbnail ? (

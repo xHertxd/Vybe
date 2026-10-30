@@ -147,9 +147,13 @@ export function MusicRoomPage({
   };
 
   return (
-    <div className="relative flex min-h-screen flex-col bg-[#171719] text-[#fde5b7] select-none">
+    <div className="relative flex min-h-screen flex-col bg-[#121214] text-[#F5F5DC] select-none font-sans overflow-x-hidden">
+      {/* Liquid Glass Background Orbs from xhertxd.me */}
+      <div className="pointer-events-none absolute -top-40 right-10 h-80 w-80 rounded-full bg-[#40E0D0]/10 blur-[130px]" />
+      <div className="pointer-events-none absolute top-1/3 -left-40 h-80 w-80 rounded-full bg-[#fde5b7]/10 blur-[140px]" />
+
       {/* ------------------------------------------------------------- header -- */}
-      <header className="sticky top-0 z-40 border-b border-white/[0.08] bg-[#171719]/95 backdrop-blur-md">
+      <header className="sticky top-0 z-40 border-b border-white/[0.08] bg-[#121214]/85 backdrop-blur-2xl">
         <div className="mx-auto flex h-16 w-full max-w-7xl items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
           <div className="flex min-w-0 items-center gap-3">
             <Brand size="sm" />
@@ -157,7 +161,7 @@ export function MusicRoomPage({
             <button
               type="button"
               onClick={() => void copyCode()}
-              className="group flex items-center gap-2 rounded-xl border border-white/10 bg-[#262629] px-3 py-1.5 transition-all hover:border-[#fde5b7]/40 hover:bg-[#2c2c30]"
+              className="group flex items-center gap-2 rounded-xl border border-white/[0.09] bg-white/[0.035] backdrop-blur-md px-3 py-1.5 transition-all hover:border-[#40E0D0]/50 hover:bg-white/[0.06]"
               title="Click to copy room code"
             >
               <span className="text-[10px] font-medium uppercase tracking-wider text-[#a8a29e]">
@@ -167,7 +171,7 @@ export function MusicRoomPage({
                 {room.roomCode}
               </span>
               {copiedCode ? (
-                <Check className="h-3.5 w-3.5 text-[#86efac]" />
+                <Check className="h-3.5 w-3.5 text-[#40E0D0]" />
               ) : (
                 <Copy className="h-3.5 w-3.5 text-[#a8a29e] group-hover:text-white" />
               )}
@@ -175,7 +179,7 @@ export function MusicRoomPage({
             <button
               type="button"
               onClick={() => void shareRoom()}
-              className="hidden h-8 w-8 items-center justify-center rounded-xl border border-white/10 bg-[#262629] text-[#a8a29e] hover:text-[#fde5b7] hover:border-[#fde5b7]/30 transition-all sm:inline-flex"
+              className="hidden h-8 w-8 items-center justify-center rounded-xl border border-white/[0.09] bg-white/[0.035] text-[#a8a29e] hover:text-[#fde5b7] hover:border-[#40E0D0]/40 transition-all sm:inline-flex"
               title="Share room link"
             >
               <Share2 className="h-3.5 w-3.5" />
@@ -183,17 +187,17 @@ export function MusicRoomPage({
           </div>
 
           <div className="flex items-center gap-2.5">
-            <span className="hidden items-center gap-1.5 rounded-full border border-green-500/30 bg-green-500/10 px-3 py-1 text-[11px] font-medium text-[#86efac] sm:flex">
-              <span className="h-1.5 w-1.5 rounded-full bg-[#86efac] animate-pulse" />
+            <span className="hidden items-center gap-1.5 rounded-full border border-[#40E0D0]/30 bg-[#40E0D0]/10 px-3 py-1 text-[11px] font-medium text-[#40E0D0] sm:flex shadow-[0_0_12px_rgba(64,224,208,0.15)]">
+              <span className="h-1.5 w-1.5 rounded-full bg-[#40E0D0] animate-pulse" />
               <span>{latency ? `${latency}ms · Synced` : 'Synced'}</span>
             </span>
 
-            <div className="hidden items-center gap-1.5 text-xs text-[#a8a29e] sm:flex px-2 py-1 bg-[#262629] rounded-xl border border-white/5">
+            <div className="hidden items-center gap-1.5 text-xs text-[#a8a29e] sm:flex px-2.5 py-1 bg-white/[0.035] rounded-xl border border-white/[0.07] backdrop-blur-md">
               <Users className="h-3.5 w-3.5 text-[#fde5b7]" />
               <span>{onlineUsers.length} {onlineUsers.length === 1 ? 'listener' : 'listeners'}</span>
             </div>
 
-            <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-[#262629] px-2.5 py-1.5">
+            <div className="flex items-center gap-2 rounded-xl border border-white/[0.09] bg-white/[0.04] backdrop-blur-md px-2.5 py-1.5">
               <div className="grid h-6 w-6 place-items-center rounded-lg bg-[#fde5b7] text-[10px] font-black text-black">
                 {initials(currentUser.username)}
               </div>
@@ -204,7 +208,7 @@ export function MusicRoomPage({
                 <p className="flex items-center gap-1 text-[9px] font-medium text-[#a8a29e]">
                   {isAdmin ? (
                     <>
-                      <Crown className="h-2.5 w-2.5 text-[#fde5b7]" />
+                      <Crown className="h-2.5 w-2.5 text-[#40E0D0]" />
                       Host
                     </>
                   ) : (
@@ -228,7 +232,7 @@ export function MusicRoomPage({
             <button
               type="button"
               onClick={onLeave}
-              className="flex items-center gap-1.5 h-8 rounded-xl border border-white/10 bg-[#262629] px-3 text-xs text-[#a8a29e] hover:text-[#fde5b7] hover:border-[#fde5b7]/30 transition-all"
+              className="flex items-center gap-1.5 h-8 rounded-xl border border-white/[0.09] bg-white/[0.035] px-3 text-xs text-[#a8a29e] hover:text-[#fde5b7] hover:border-[#40E0D0]/40 transition-all"
               title="Leave room"
             >
               <LogOut className="h-3.5 w-3.5" />

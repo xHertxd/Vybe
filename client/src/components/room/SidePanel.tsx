@@ -109,32 +109,32 @@ export function SidePanel({
   });
 
   return (
-    <aside className="panel flex min-h-0 flex-col overflow-hidden rounded-[22px]">
-      <div className="flex items-center justify-between gap-2 border-b border-sand px-3 py-3">
-        <div className="grid flex-1 grid-cols-2 gap-1 rounded-lg border border-sand bg-paper p-1">
+    <aside className="flex min-h-0 flex-col overflow-hidden rounded-[32px] bg-white/[0.035] backdrop-blur-3xl border border-white/[0.1] shadow-[0_20px_50px_rgba(0,0,0,0.5),inset_0_1px_1px_rgba(255,255,255,0.15)]">
+      <div className="flex items-center justify-between gap-2 border-b border-white/[0.08] px-3.5 py-3">
+        <div className="grid flex-1 grid-cols-2 gap-1 rounded-xl bg-black/40 p-1 border border-white/[0.06]">
           <button
             type="button"
             onClick={() => setTab('queue')}
             className={cn(
-              'flex items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-medium transition-colors',
-              tab === 'queue' ? 'bg-cream text-ink shadow-[0_1px_2px_rgba(35,32,28,0.06)]' : 'text-taupe hover:text-graphite'
+              'flex items-center justify-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-all',
+              tab === 'queue' ? 'bg-[#fde5b7] text-[#141416] font-semibold shadow-sm' : 'text-[#a8a29e] hover:text-white'
             )}
           >
             <ListMusic className="h-3.5 w-3.5" />
             Queue
-            <span className="font-mono text-[10px] text-taupe">{room.queue.length}</span>
+            <span className={cn('font-mono text-[10px]', tab === 'queue' ? 'text-black/70' : 'text-[#a8a29e]')}>{room.queue.length}</span>
           </button>
           <button
             type="button"
             onClick={() => setTab('people')}
             className={cn(
-              'flex items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-medium transition-colors',
-              tab === 'people' ? 'bg-cream text-ink shadow-[0_1px_2px_rgba(35,32,28,0.06)]' : 'text-taupe hover:text-graphite'
+              'flex items-center justify-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-all',
+              tab === 'people' ? 'bg-[#fde5b7] text-[#141416] font-semibold shadow-sm' : 'text-[#a8a29e] hover:text-white'
             )}
           >
             <Users className="h-3.5 w-3.5" />
             People
-            <span className="font-mono text-[10px] text-taupe">
+            <span className={cn('font-mono text-[10px]', tab === 'people' ? 'text-black/70' : 'text-[#a8a29e]')}>
               {room.users.filter((user) => user.isOnline).length}
             </span>
           </button>
@@ -143,9 +143,9 @@ export function SidePanel({
           <button
             type="button"
             onClick={onOpenAdd}
-            className="btn btn-primary h-8 flex-none rounded-lg px-2.5 text-[11px]"
+            className="h-8 flex-none rounded-xl px-3 text-xs font-semibold bg-white/[0.06] hover:bg-white/[0.12] text-[#fde5b7] border border-white/10 transition-all flex items-center gap-1"
           >
-            <Plus className="h-3.5 w-3.5" />
+            <Plus className="h-3.5 w-3.5 text-[#40E0D0]" />
             Add
           </button>
         )}

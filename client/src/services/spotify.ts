@@ -420,7 +420,13 @@ export class SpotifyPlayer {
 
   public async setVolume(value: number): Promise<void> {
     this.volume = Math.max(0, Math.min(1, value));
-    await this.player?.setVolume(this.volume);
+    try {
+      if (this.player && typeof this.player.setVolume === 'function') {
+        await this.player.setVolume(this.volume);
+      }
+    } catch {
+      // ignore
+    }
   }
 
   public async getPosition(): Promise<number> {

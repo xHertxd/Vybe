@@ -137,14 +137,38 @@ export const CURATED_TRACKS: MediaItemInput[] = [
   },
 ];
 
-interface ITunesTrack {
-  trackId: number;
-  trackName: string;
-  artistName: string;
-  collectionName?: string;
-  artworkUrl100: string;
-  previewUrl: string;
-  trackTimeMillis: number;
+interface AudiusTrack {
+  id: string;
+  title: string;
+  user?: { name?: string };
+  duration: number;
+  artwork?: Record<string, string>;
+}
+
+async function searchAudius(query: string): Promise<MediaItemInput[]> {
+  try {
+    const url = `https://discoveryprovider.audius.co/v1/tracks/search?query=${encodeURIComponent(
+      query
+    )}&app_name=VYBE&limit=12`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(4500) });
+    if (!res.ok) return [];
+    const json = (await res.json()) as { data?: AudiusTrack[] };
+    const list = json.data || [];
+    return list.map((t) => ({
+      provider: 'audio' as const,
+      sourceType: 'track' as const,
+      mediaId: `audius_${t.id}`,
+      url: `https://discoveryprovider.audius.co/v1/tracks/${t.id}/stream?app_name=VYBE`,
+      title: t.title || 'Audius Track',
+      artist: t.user?.name || 'Artist',
+      album: 'Audius',
+      thumbnail: t.artwork?.['480x480'] || t.artwork?.['150x150'] || '',
+      duration: t.duration || 210, // FULL DURATION!
+      isPlayable: true,
+    }));
+  } catch {
+    return [];
+  }
 }
 
 export async function searchSongs(query: string): Promise<MediaItemInput[]> {
@@ -157,62 +181,34 @@ export async function searchSongs(query: string): Promise<MediaItemInput[]> {
       t.artist.toLowerCase().includes(clean.toLowerCase())
   );
 
-  // 1. Try backend YouTube search (full songs, no 30s limit)
+  // 1. Try backend YouTube search (full songs, complete YouTube videos)
+  let ytResults: MediaItemInput[] = [];
   try {
     const serverUrl = import.meta.env.VITE_SERVER_URL || '';
     const res = await fetch(`${serverUrl}/api/search?q=${encodeURIComponent(clean)}`, {
-      signal: AbortSignal.timeout(4500),
+      signal: AbortSignal.timeout(3500),
     });
     if (res.ok) {
       const data = (await res.json()) as { success?: boolean; results?: MediaItemInput[] };
       if (data.success && data.results && data.results.length > 0) {
-        return data.results;
+        ytResults = data.results;
       }
     }
   } catch {
-    // Backend search offline or timed out, continue to fallback
+    // Backend search offline or timed out
   }
 
-  // 2. Return matched curated songs if any
-  if (matchedCurated.length > 0) {
-    return matchedCurated;
+  // 2. Search Audius (Full-length streaming audio library, NO 30s cutoffs)
+  const audiusResults = await searchAudius(clean);
+
+  // Combine results: prioritize full YouTube + full Audius + curated
+  const combined = [...ytResults, ...audiusResults, ...matchedCurated];
+  if (combined.length > 0) {
+    const unique = Array.from(new Map(combined.map((item) => [item.title + item.artist, item])).values());
+    return unique;
   }
 
-  // 3. iTunes search fallback
-  try {
-    const url = `https://itunes.apple.com/search?term=${encodeURIComponent(
-      clean
-    )}&entity=song&limit=15`;
-    const res = await fetch(url);
-    if (!res.ok) throw new Error('Search failed');
-
-    const data = (await res.json()) as { results?: ITunesTrack[] };
-    const results = data.results || [];
-
-    const items: MediaItemInput[] = results
-      .filter((t) => Boolean(t.previewUrl && t.trackName))
-      .map((t) => {
-        const hdArtwork = t.artworkUrl100
-          ? t.artworkUrl100.replace('100x100bb', '600x600bb')
-          : '';
-        return {
-          provider: 'audio' as const,
-          sourceType: 'track' as const,
-          mediaId: String(t.trackId),
-          url: t.previewUrl,
-          title: t.trackName,
-          artist: t.artistName || 'Unknown Artist',
-          album: t.collectionName || '',
-          thumbnail: hdArtwork,
-          duration: 30,
-          isPlayable: true,
-        };
-      });
-
-    return items;
-  } catch {
-    return CURATED_TRACKS;
-  }
+  return CURATED_TRACKS;
 }
 
 export function extractYouTubeId(url: string): string | null {

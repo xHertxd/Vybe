@@ -57,6 +57,9 @@ export function useMediaPlayer({
   const endedForTrack = useRef<string | null>(null);
   const reportedDuration = useRef<string | null>(null);
   const notPlayingTicks = useRef(0);
+  const lastSeekTime = useRef(0);
+  const previousStatus = useRef<string | null>(null);
+  const previousTrackId = useRef<string | null>(null);
 
   // Tear down / build an adapter whenever the track changes.
   useEffect(() => {
@@ -200,15 +203,24 @@ export function useMediaPlayer({
       const target = positionAt(playback, now);
       const wait = waitUntilStart(playback, now);
 
+      const statusChanged = previousStatus.current !== playback.status;
+      const trackChanged = previousTrackId.current !== playback.currentTrack?.id;
+      previousStatus.current = playback.status;
+      previousTrackId.current = playback.currentTrack?.id;
+
       try {
         if (activeAdapter.prime) {
           await activeAdapter.prime(target, playback.status === 'playing');
         }
 
         if (playback.status === 'playing') {
-          if (wait > 40) {
+          const isAlreadyPlaying = activeAdapter.isPlaying ? activeAdapter.isPlaying() : false;
+
+          // If track changed or playback just started, honour scheduledStartTime
+          if ((statusChanged || trackChanged || !isAlreadyPlaying) && wait > 40) {
             activeAdapter.pause();
             activeAdapter.seek(target);
+            lastSeekTime.current = Date.now();
             setCurrentTime(target);
             startTimer.current = setTimeout(() => {
               adapterRef.current?.setRate(1);
@@ -219,15 +231,27 @@ export function useMediaPlayer({
             return;
           }
 
-          if (Math.abs(activeAdapter.getTime() - target) > 0.35) {
+          const currentPos = activeAdapter.getTime();
+          const discrepancy = Math.abs(currentPos - target);
+
+          if (!isAlreadyPlaying) {
+            if (discrepancy > 0.6) {
+              activeAdapter.seek(target);
+              lastSeekTime.current = Date.now();
+            }
+            await activeAdapter.play();
+            setPhase('ready');
+          } else if (discrepancy > 1.8 && Date.now() - lastSeekTime.current > 3000) {
+            // Explicit user scrubbing/seek action while playing
             activeAdapter.seek(target);
+            lastSeekTime.current = Date.now();
           }
-          await activeAdapter.play();
-          setPhase('ready');
         } else {
+          // Status is paused or stopped
           activeAdapter.pause();
-          if (Math.abs(activeAdapter.getTime() - target) > 0.2) {
+          if (Math.abs(activeAdapter.getTime() - target) > 0.4) {
             activeAdapter.seek(target);
+            lastSeekTime.current = Date.now();
           }
           setCurrentTime(target);
         }
@@ -287,22 +311,24 @@ export function useMediaPlayer({
 
         const absDrift = Math.abs(drift);
         const isYouTube = adapter instanceof YouTubeAdapter;
+        const timeSinceLastSeek = Date.now() - lastSeekTime.current;
 
         if (isYouTube) {
-          // YouTube does not support micro playback rates, snap precisely
-          if (absDrift > 0.15) {
+          // YouTube: Only seek on large desync (> 1.5s) with a 4s cooldown to completely prevent stuttering!
+          if (absDrift > 1.5 && timeSinceLastSeek > 4000) {
             adapter.seek(target);
-            adapter.setRate(1);
-          } else {
+            lastSeekTime.current = Date.now();
             adapter.setRate(1);
           }
         } else {
-          // HTML5 Audio supports dynamic smooth rate correction without audible hitch
-          if (absDrift > 0.20) {
+          // HTML5 Audio: Smooth pitch-neutral rate correction for continuous, stutter-free playback!
+          if (absDrift > 1.5 && timeSinceLastSeek > 4000) {
             adapter.seek(target);
+            lastSeekTime.current = Date.now();
             adapter.setRate(1);
-          } else if (absDrift > 0.04) {
-            adapter.setRate(drift < 0 ? 1.05 : 0.95);
+          } else if (absDrift > 0.06) {
+            // Adjust speed by only 3% (inaudible pitch change, zero buffering interruption)
+            adapter.setRate(drift < 0 ? 1.03 : 0.97);
           } else {
             adapter.setRate(1);
           }
@@ -348,7 +374,7 @@ export function useMediaPlayer({
           });
         }
       });
-    }, 350);
+    }, 1000);
 
     return () => {
       disposed = true;

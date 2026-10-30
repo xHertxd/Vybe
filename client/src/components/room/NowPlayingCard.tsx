@@ -89,22 +89,22 @@ export function NowPlayingCard({
   const ProviderIcon = providerIcon;
 
   return (
-    <section className="panel relative overflow-hidden rounded-[22px] p-3 sm:p-4 lg:p-5">
+    <section className="relative overflow-hidden rounded-[32px] p-4 sm:p-6 bg-white/[0.035] backdrop-blur-3xl border border-white/[0.1] shadow-[0_20px_50px_rgba(0,0,0,0.5),inset_0_1px_1px_rgba(255,255,255,0.15)]">
       {/* ------------------------------------------------------------ header -- */}
-      <div className="relative mb-3 flex items-center justify-between gap-3 px-1">
+      <div className="relative mb-3.5 flex items-center justify-between gap-3 px-1">
         <div className="flex items-center gap-2">
-          <span className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.2em] text-taupe">
+          <span className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.2em] text-[#a8a29e]">
             <span
               className={cn(
                 'h-1.5 w-1.5 rounded-full',
-                isPlaying ? 'bg-forest' : 'bg-clay'
+                isPlaying ? 'bg-[#40E0D0] animate-pulse shadow-[0_0_8px_#40E0D0]' : 'bg-[#78716c]'
               )}
             />
             Now playing
           </span>
           {track && (
-            <span className="chip py-1 text-[10px]">
-              <ProviderIcon className="h-3 w-3" />
+            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-white/[0.04] border border-white/[0.08] text-[10px] font-medium text-[#fde5b7]">
+              <ProviderIcon className="h-3 w-3 text-[#40E0D0]" />
               {providerLabel(track.provider)}
             </span>
           )}
@@ -114,12 +114,12 @@ export function NowPlayingCard({
           {track && (
             <span
               className={cn(
-                'chip py-1 text-[10px]',
-                inSync ? 'border-forest/25 text-forest' : 'border-rust/25 text-rust'
+                'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border text-[10px] font-medium backdrop-blur-md',
+                inSync ? 'border-[#40E0D0]/30 text-[#40E0D0] bg-[#40E0D0]/10' : 'border-red-400/30 text-red-400 bg-red-400/10'
               )}
             >
               <span
-                className={cn('h-1.5 w-1.5 rounded-full', inSync ? 'bg-forest' : 'bg-rust')}
+                className={cn('h-1.5 w-1.5 rounded-full', inSync ? 'bg-[#40E0D0]' : 'bg-red-400')}
               />
               {isPlaying ? (inSync ? 'In sync' : `${drift}ms drift`) : 'Paused'}
             </span>
@@ -127,7 +127,7 @@ export function NowPlayingCard({
           <button
             type="button"
             onClick={onToggleTheater}
-            className="icon-btn hidden h-8 w-8 sm:inline-flex"
+            className="hidden h-8 w-8 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.03] text-[#a8a29e] hover:text-white hover:border-white/20 transition-all sm:inline-flex"
             title={theater ? 'Exit theater mode' : 'Theater mode'}
             aria-label={theater ? 'Exit theater mode' : 'Theater mode'}
           >
