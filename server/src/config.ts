@@ -37,6 +37,8 @@ export const config = {
   youtubeApiKey: process.env.YOUTUBE_API_KEY?.trim() || '',
   spotifyClientId: process.env.SPOTIFY_CLIENT_ID?.trim() || '',
   spotifyClientSecret: process.env.SPOTIFY_CLIENT_SECRET?.trim() || '',
+
+  freeToUseApiUrl: process.env.FREETOUSE_API_URL?.trim() || 'https://api.freetouse.com/v3',
 };
 
 export type AppConfig = typeof config;

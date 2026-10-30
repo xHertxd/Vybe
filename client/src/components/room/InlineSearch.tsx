@@ -11,7 +11,7 @@ import {
 import { socket } from '../../services/socket.js';
 import {
   searchSongs,
-  CURATED_TRACKS,
+  fetchInitialTracks,
   resolveDirectMedia,
 } from '../../services/musicLibrary.js';
 import {
@@ -39,7 +39,7 @@ const FEATURED_VIBES = [
 
 export function InlineSearch({ notify }: InlineSearchProps) {
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<MediaItemInput[]>(CURATED_TRACKS.slice(0, 8));
+  const [results, setResults] = useState<MediaItemInput[]>([]);
   const [activeVibe, setActiveVibe] = useState('🔥 Trending');
   const [isSearching, setIsSearching] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
@@ -58,6 +58,11 @@ export function InlineSearch({ notify }: InlineSearchProps) {
     void fetchCategories().then((cats) => {
       if (mounted && cats.length > 0) {
         setCategories(cats);
+      }
+    });
+    void fetchInitialTracks(8).then((tracks) => {
+      if (mounted && tracks.length > 0) {
+        setResults(tracks);
       }
     });
     return () => {
@@ -84,7 +89,7 @@ export function InlineSearch({ notify }: InlineSearchProps) {
     if (!clean) {
       setIsSearching(true);
       void fetchTrendingTracks(10).then((tracks) => {
-        setResults(tracks.length > 0 ? tracks : CURATED_TRACKS.slice(0, 8));
+        setResults(tracks.length > 0 ? tracks : []);
         setIsSearching(false);
       });
       return;
@@ -110,7 +115,7 @@ export function InlineSearch({ notify }: InlineSearchProps) {
         const songs = await searchSongs(clean);
         setResults(songs.slice(0, 15));
       } catch {
-        setResults(CURATED_TRACKS.slice(0, 8));
+        setResults([]);
       } finally {
         setIsSearching(false);
       }
@@ -126,7 +131,7 @@ export function InlineSearch({ notify }: InlineSearchProps) {
     try {
       if (!vibeQuery) {
         const trending = await fetchTrendingTracks(12);
-        setResults(trending.length > 0 ? trending : CURATED_TRACKS.slice(0, 8));
+        setResults(trending.length > 0 ? trending : []);
       } else {
         // Find matching category ID or perform search
         const matchedCat = categories.find((c) =>
@@ -141,7 +146,7 @@ export function InlineSearch({ notify }: InlineSearchProps) {
         }
       }
     } catch {
-      setResults(CURATED_TRACKS.slice(0, 8));
+      setResults([]);
     } finally {
       setIsSearching(false);
     }
