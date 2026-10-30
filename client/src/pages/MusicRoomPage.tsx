@@ -20,6 +20,7 @@ import { Brand } from '../components/Brand.js';
 import { AuroraBackground } from '../components/AuroraBackground.js';
 import { Footer } from '../components/Footer.js';
 import { NowPlayingCard } from '../components/room/NowPlayingCard.js';
+import { InlineSearch } from '../components/room/InlineSearch.js';
 import { SidePanel } from '../components/room/SidePanel.js';
 import { AddMediaModal } from '../components/AddMediaModal.js';
 import { ConfirmDialog } from '../components/Modal.js';
@@ -291,6 +292,8 @@ export function MusicRoomPage({
           )}
         >
           <div className="min-w-0 space-y-4">
+            <InlineSearch notify={notify} />
+
             <NowPlayingCard
               room={room}
               currentUser={currentUser}
