@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import type { UnifiedMediaItem, MediaProvider } from '../../types.js';
-import { socket } from '../../services/socket.js';
+import { socket, getApiUrl } from '../../services/socket.js';
 import {
   Plus,
   Trash2,
@@ -51,7 +51,7 @@ export const UnifiedQueue: React.FC<UnifiedQueueProps> = ({
     setResolvedPreview(null);
 
     try {
-      const response = await fetch('/api/resolve-media', {
+      const response = await fetch(getApiUrl('/api/resolve-media'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: urlInput.trim() })
@@ -87,7 +87,7 @@ export const UnifiedQueue: React.FC<UnifiedQueueProps> = ({
   const handleAddPreset = async (presetUrl: string) => {
     if (!isAdmin) return;
     try {
-      const response = await fetch('/api/resolve-media', {
+      const response = await fetch(getApiUrl('/api/resolve-media'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: presetUrl })
@@ -117,7 +117,7 @@ export const UnifiedQueue: React.FC<UnifiedQueueProps> = ({
     formData.append('audio', file);
 
     try {
-      const response = await fetch('/api/upload', {
+      const response = await fetch(getApiUrl('/api/upload'), {
         method: 'POST',
         body: formData
       });

@@ -623,6 +623,18 @@ io.on('connection', (socket) => {
   });
 });
 
+// Serve client build if available (for all-in-one deployments on Render, Railway, VPS)
+const clientDistPath = path.join(__dirname, '../../client/dist');
+if (fs.existsSync(clientDistPath)) {
+  app.use(express.static(clientDistPath));
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api') || req.path.startsWith('/uploads') || req.path.startsWith('/socket.io')) {
+      return next();
+    }
+    res.sendFile(path.join(clientDistPath, 'index.html'));
+  });
+}
+
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
   console.log(`Vybe Synchronization Server running on http://localhost:${PORT}`);

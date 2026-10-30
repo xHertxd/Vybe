@@ -1,7 +1,16 @@
 import { io, Socket } from 'socket.io-client';
 
-// Use same host or fallback to port 5000 in dev
-const SERVER_URL = window.location.port === '3000' ? 'http://localhost:5000' : '/';
+// Configurable backend URL: supports VITE_SERVER_URL environment variable for Vercel/Netlify deployments,
+// falls back to localhost:5000 in local development, or same-origin for unified servers.
+export const SERVER_URL =
+  import.meta.env.VITE_SERVER_URL ||
+  (window.location.port === '3000' ? 'http://localhost:5000' : window.location.origin);
+
+export function getApiUrl(path: string): string {
+  const cleanBase = SERVER_URL.replace(/\/+$/, '');
+  const cleanPath = path.startsWith('/') ? path : `/${path}`;
+  return `${cleanBase}${cleanPath}`;
+}
 
 export const socket: Socket = io(SERVER_URL, {
   autoConnect: true,
@@ -33,4 +42,3 @@ export function getStoredUsername(): string {
 export function setStoredUsername(username: string): void {
   localStorage.setItem(STORAGE_USERNAME_KEY, username);
 }
-

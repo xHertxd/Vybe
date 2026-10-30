@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import type { UnifiedMediaItem, PlaybackState } from '../../types.js';
 import { syncEngine, type PlayerAdapter } from '../../services/syncEngine.js';
-import { socket } from '../../services/socket.js';
+import { socket, getApiUrl } from '../../services/socket.js';
 import { Play } from 'lucide-react';
 
 interface HTML5AudioPlayerProps {
@@ -126,7 +126,7 @@ export const HTML5AudioPlayer: React.FC<HTML5AudioPlayerProps> = ({
 
   // Determine media URL (handle relative /uploads/ or absolute url)
   const mediaSrc = track.url.startsWith('/') && !track.url.startsWith('//')
-    ? (window.location.port === '3000' ? `http://localhost:5000${track.url}` : track.url)
+    ? getApiUrl(track.url)
     : track.url;
 
   return (
