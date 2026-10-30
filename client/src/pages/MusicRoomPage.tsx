@@ -4,6 +4,8 @@ import {
   Copy,
   Crown,
   LogOut,
+  Pause,
+  Play,
   Power,
   Share2,
   Users,
@@ -61,6 +63,54 @@ export function MusicRoomPage({
 
   const spotifyConnected = spotify.isConnected();
   const track = room.playback.currentTrack;
+
+  const canControl =
+    isAdmin ||
+    room.settings.playbackControl === 'anyone' ||
+    !room.users.some((u) => u.isAdmin && u.isOnline);
+
+  const handleTogglePlay = async () => {
+    if (!track) return;
+    try {
+      await player.activate();
+    } catch {}
+
+    if (canControl) {
+      socket.emit(room.playback.status === 'playing' ? 'playback:pause' : 'playback:play', {
+        roomCode: room.roomCode,
+      });
+    } else {
+      if (room.playback.status !== 'playing') {
+        notify('Paused by Host', 'Waiting for room host to start playback.', 'info');
+      } else {
+        notify('Locked in Sync', 'Your device is locked to room playback.', 'success');
+      }
+    }
+  };
+
+  // Immediate Spacebar play/pause listener
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable ||
+          target.getAttribute('role') === 'textbox')
+      ) {
+        return;
+      }
+
+      if (e.code === 'Space' || e.key === ' ') {
+        e.preventDefault();
+        void handleTogglePlay();
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [track, canControl, room.playback.status, room.roomCode]);
 
   const player = useMediaPlayer({
     track,
@@ -240,6 +290,28 @@ export function MusicRoomPage({
               </div>
             </div>
 
+            {/* Play/Pause right next to the admin! */}
+            {track && (
+              <button
+                type="button"
+                onClick={handleTogglePlay}
+                className={cn(
+                  'flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all shadow-md active:scale-95 cursor-pointer',
+                  room.playback.status === 'playing'
+                    ? 'border-[#40E0D0]/40 bg-[#40E0D0]/15 text-[#40E0D0] hover:bg-[#40E0D0]/25'
+                    : 'border-[#fde5b7]/40 bg-[#fde5b7]/20 text-[#fde5b7] hover:bg-[#fde5b7]/30'
+                )}
+                title={canControl ? (room.playback.status === 'playing' ? 'Pause playback (Space)' : 'Start playback (Space)') : 'Sync audio (Space)'}
+              >
+                {room.playback.status === 'playing' ? (
+                  <Pause className="h-3.5 w-3.5 fill-current" />
+                ) : (
+                  <Play className="h-3.5 w-3.5 fill-current" />
+                )}
+                <span className="hidden md:inline">{room.playback.status === 'playing' ? 'Pause' : 'Play'}</span>
+              </button>
+            )}
+
             {isAdmin && (
               <button
                 type="button"
@@ -303,6 +375,8 @@ export function MusicRoomPage({
               room={room}
               currentUser={currentUser}
               isAdmin={isAdmin}
+              isPlaying={room.playback.status === 'playing'}
+              onTogglePlay={handleTogglePlay}
               onOpenAdd={() => setAddOpen(true)}
               onRequestClear={() => setConfirm('clear')}
               notify={notify}

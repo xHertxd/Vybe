@@ -54,6 +54,7 @@ export interface RoomSettings {
   repeatMode: 'off' | 'all' | 'one';
   isShuffle: boolean;
   sharedVolume: number;
+  playbackControl?: 'admin' | 'anyone';
 }
 
 export interface RoomState {

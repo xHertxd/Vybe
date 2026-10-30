@@ -7,7 +7,10 @@ import {
   Crown,
   ListMusic,
   Music2,
+  Pause,
+  Play,
   Plus,
+  QrCode,
   Radio,
   Trash2,
   Users,
@@ -26,6 +29,8 @@ interface SidePanelProps {
   room: RoomState;
   currentUser: RoomUser;
   isAdmin: boolean;
+  isPlaying?: boolean;
+  onTogglePlay?: () => void;
   onOpenAdd: () => void;
   onRequestClear: () => void;
   notify: (title: string, description?: string, tone?: 'info' | 'success' | 'error') => void;
@@ -54,6 +59,8 @@ export function SidePanel({
   room,
   currentUser,
   isAdmin,
+  isPlaying,
+  onTogglePlay,
   onOpenAdd,
   onRequestClear,
   notify,
@@ -313,37 +320,104 @@ export function SidePanel({
         </>
       ) : (
         <div className="min-h-0 flex-1 overflow-y-auto p-3 scroll-thin">
-          <div className="rounded-xl border border-sand bg-paper p-3.5">
-            <p className="text-[9px] font-medium uppercase tracking-[0.2em] text-taupe">
-              Room code
-            </p>
-            <div className="mt-1.5 flex items-center justify-between gap-2">
-              <span className="font-mono text-2xl font-bold tracking-[0.18em] text-[#fde5b7]">
-                {room.roomCode}
+          {/* Room Header & Share */}
+          <div className="rounded-2xl border border-white/10 bg-[#1e1e22] p-3.5 shadow-md">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#fde5b7]">
+                # Room {room.roomCode}
               </span>
-              <button type="button" onClick={() => void copyCode()} className="icon-btn h-8 w-8 text-[#fde5b7]" title="Copy code">
-                {copied ? <Check className="h-4 w-4 text-forest" /> : <Copy className="h-4 w-4" />}
-              </button>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => void copyCode()}
+                  className="p-1.5 rounded-lg hover:bg-white/10 text-[#fde5b7] transition-all cursor-pointer"
+                  title="Copy room code"
+                >
+                  {copied ? <Check className="h-4 w-4 text-[#40E0D0]" /> : <Copy className="h-4 w-4" />}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void copyLink()}
+                  className="p-1.5 rounded-lg hover:bg-white/10 text-[#fde5b7] transition-all cursor-pointer"
+                  title="Copy invite link"
+                >
+                  <QrCode className="h-4 w-4" />
+                </button>
+              </div>
             </div>
-            <button
-              type="button"
-              onClick={() => void copyLink()}
-              className="mt-2 w-full rounded-lg border border-white/10 bg-[#262629] py-1.5 text-[11px] font-medium text-[#fde5b7] transition-colors hover:bg-[#313136]"
-            >
-              Copy invite link
-            </button>
+
+            {/* PLAYBACK PERMISSIONS Segmented Switch */}
+            <div className="mt-3.5 pt-3 border-t border-white/[0.08]">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[9.5px] font-semibold uppercase tracking-[0.16em] text-[#a8a29e]">
+                  Playback Permissions
+                </span>
+                {!isAdmin && (
+                  <span className="text-[8.5px] text-[#78716c]">Host controlled</span>
+                )}
+              </div>
+              <div className="grid grid-cols-2 rounded-xl border border-white/10 bg-[#161619] p-1 gap-1">
+                <button
+                  type="button"
+                  disabled={!isAdmin}
+                  onClick={() => {
+                    socket.emit('settings:update', {
+                      roomCode: room.roomCode,
+                      settings: { playbackControl: 'anyone' },
+                    });
+                    notify('Permissions updated', 'Anyone in the room can now control playback.', 'success');
+                  }}
+                  className={cn(
+                    'flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[11px] font-medium transition-all cursor-pointer',
+                    (room.settings.playbackControl === 'anyone' || !room.users.some(u => u.isAdmin && u.isOnline))
+                      ? 'bg-[#40E0D0] text-black font-semibold shadow-md'
+                      : 'text-[#a8a29e] hover:text-white disabled:opacity-50 disabled:hover:text-[#a8a29e]'
+                  )}
+                >
+                  <Users className="h-3 w-3" />
+                  <span>Everyone</span>
+                </button>
+                <button
+                  type="button"
+                  disabled={!isAdmin}
+                  onClick={() => {
+                    socket.emit('settings:update', {
+                      roomCode: room.roomCode,
+                      settings: { playbackControl: 'admin' },
+                    });
+                    notify('Permissions updated', 'Only the room host can control playback.', 'success');
+                  }}
+                  className={cn(
+                    'flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[11px] font-medium transition-all cursor-pointer',
+                    (room.settings.playbackControl !== 'anyone' && room.users.some(u => u.isAdmin && u.isOnline))
+                      ? 'bg-[#f59e0b] text-black font-semibold shadow-md'
+                      : 'text-[#a8a29e] hover:text-white disabled:opacity-50 disabled:hover:text-[#a8a29e]'
+                  )}
+                >
+                  <Crown className="h-3 w-3" />
+                  <span>Admins</span>
+                </button>
+              </div>
+
+              {!room.users.some(u => u.isAdmin && u.isOnline) && (
+                <p className="mt-2 text-[9.5px] leading-relaxed text-[#40E0D0] bg-[#40E0D0]/10 border border-[#40E0D0]/20 rounded-lg p-2">
+                  Host is currently away — all members have playback control until host returns.
+                </p>
+              )}
+            </div>
           </div>
 
-          <div className="mt-3 flex items-center justify-between px-1">
-            <span className="text-[9px] font-medium uppercase tracking-[0.2em] text-taupe">
-              In the room
+          <div className="mt-4 flex items-center justify-between px-1">
+            <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#a8a29e]">
+              Connected Users
             </span>
-            <span className="font-mono text-[9px] text-clay">
-              {room.users.filter((user) => user.isOnline).length}/{room.users.length}
+            <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/[0.06] border border-white/10 font-mono text-[10px] text-[#fde5b7]">
+              <Users className="h-2.5 w-2.5" />
+              <span>{room.users.filter((user) => user.isOnline).length}</span>
             </span>
           </div>
 
-          <ul className="mt-1.5 space-y-1">
+          <ul className="mt-2 space-y-1.5">
             {users.map((user) => {
               const isYou = user.id === currentUser.id;
               return (
@@ -361,14 +435,14 @@ export function SidePanel({
                     }
                   }}
                   className={cn(
-                    'group relative flex items-center gap-2.5 rounded-lg border px-2 py-2 transition-colors select-none',
-                    isYou ? 'border-sand bg-paper' : 'border-transparent hover:bg-paper/70'
+                    'group relative flex items-center gap-2.5 rounded-xl border px-3 py-2.5 transition-all select-none',
+                    isYou ? 'border-[#40E0D0]/30 bg-[#40E0D0]/[0.06]' : 'border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.05]'
                   )}
                 >
                   <div className="relative">
                     <div
                       className={cn(
-                        'grid h-8 w-8 place-items-center rounded-full text-[10px] font-semibold',
+                        'grid h-8 w-8 place-items-center rounded-full text-[11px] font-bold shadow-inner',
                         avatarTone(user.username),
                         !user.isOnline && 'opacity-40 grayscale'
                       )}
@@ -377,40 +451,69 @@ export function SidePanel({
                     </div>
                     <span
                       className={cn(
-                        'absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-cream',
-                        user.isOnline ? 'bg-forest' : 'bg-clay'
+                        'absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-[#161619]',
+                        user.isOnline ? 'bg-[#10b981]' : 'bg-[#ef4444]'
                       )}
                     />
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5">
-                      <p className="truncate text-[12px] font-medium text-graphite">{user.username}</p>
-                      {isYou && <span className="text-[9px] text-taupe">You</span>}
-                      {user.isAdmin && <Crown className="h-3 w-3 text-[#fde5b7]" />}
+                      <p className="truncate text-[12px] font-semibold text-white/90">{user.username}</p>
+                      {user.isAdmin && (
+                        <div className="flex items-center gap-1">
+                          <Crown className="h-3 w-3 text-[#f59e0b]" />
+                          {/* Play/Pause button right next to the admin! */}
+                          {onTogglePlay && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onTogglePlay();
+                              }}
+                              className="ml-1 p-1 rounded-md bg-white/[0.08] hover:bg-white/[0.16] text-[#fde5b7] transition-all cursor-pointer"
+                              title={isPlaying ? 'Pause playback' : 'Start playback'}
+                            >
+                              {isPlaying ? <Pause className="h-2.5 w-2.5 fill-current" /> : <Play className="h-2.5 w-2.5 fill-current" />}
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </div>
-                    <p className="flex items-center gap-1 text-[9.5px] text-taupe">
+                    <p className="flex items-center gap-1 text-[9.5px] text-[#a8a29e]">
                       {user.isOnline ? (
                         <>
-                          <Wifi className="h-2.5 w-2.5 text-forest/80" />
+                          <Wifi className="h-2.5 w-2.5 text-[#10b981]" />
                           {user.ping > 0 ? `${Math.round(user.ping)}ms` : 'online'}
-                          <span className="text-sand">·</span>
-                          <span className={Math.abs(user.drift) < 120 ? 'text-forest/80' : 'text-rust/80'}>
+                          <span className="text-white/20">·</span>
+                          <span className={Math.abs(user.drift) < 120 ? 'text-[#10b981]' : 'text-[#f59e0b]'}>
                             {Math.round(user.drift)}ms drift
                           </span>
                         </>
                       ) : (
                         <>
-                          <WifiOff className="h-2.5 w-2.5" />
+                          <WifiOff className="h-2.5 w-2.5 text-white/40" />
                           reconnecting…
                         </>
                       )}
                     </p>
                   </div>
-                  {user.isAdmin ? (
-                    <span className="chip py-0.5 text-[8px] uppercase tracking-wider text-taupe">
-                      Admin
+
+                  {/* Status Badge: You (green) or Connected / Admin */}
+                  {isYou ? (
+                    <span className="px-2.5 py-0.5 rounded-full bg-[#10b981] text-black font-bold text-[9.5px] shadow-sm">
+                      You
                     </span>
-                  ) : isAdmin && !isYou ? (
+                  ) : user.isOnline ? (
+                    <span className="px-2 py-0.5 rounded-full bg-white/[0.05] border border-white/10 text-[9.5px] font-medium text-white/70">
+                      Connected
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-full bg-red-500/10 border border-red-500/20 text-[9.5px] text-red-400">
+                      Away
+                    </span>
+                  )}
+
+                  {isAdmin && !isYou && (
                     <button
                       type="button"
                       onClick={(e) => {
@@ -422,12 +525,12 @@ export function SidePanel({
                           y: Math.min(window.innerHeight - 130, e.clientY),
                         });
                       }}
-                      className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-white/10 text-taupe hover:text-white transition-all"
-                      title="Manage listener (Right click also works)"
+                      className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-white/10 text-[#a8a29e] hover:text-white transition-all ml-1 cursor-pointer"
+                      title="Manage listener"
                     >
                       <MoreVertical className="h-3.5 w-3.5" />
                     </button>
-                  ) : null}
+                  )}
                 </li>
               );
             })}

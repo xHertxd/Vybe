@@ -103,6 +103,11 @@ export function NowPlayingCard({
     }
   };
 
+  const canControl =
+    isAdmin ||
+    room.settings.playbackControl === 'anyone' ||
+    !room.users.some((u) => u.isAdmin && u.isOnline);
+
   const handleMainPlay = async () => {
     if (!track) return;
 
@@ -111,8 +116,8 @@ export function NowPlayingCard({
       await player.activate();
     } catch {}
 
-    // 2. Admin toggles room state; connected devices confirm sync
-    if (isAdmin) {
+    // 2. Control room playback if user canControl, or confirm local sync
+    if (canControl) {
       emit(isPlaying ? 'playback:pause' : 'playback:play');
     } else {
       if (!isPlaying) {
@@ -122,6 +127,30 @@ export function NowPlayingCard({
       }
     }
   };
+
+  // Immediate Spacebar play/pause listener
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable ||
+          target.getAttribute('role') === 'textbox')
+      ) {
+        return;
+      }
+
+      if (e.code === 'Space' || e.key === ' ') {
+        e.preventDefault();
+        void handleMainPlay();
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [handleMainPlay]);
 
   const handleStageClick = () => {
     if (player.phase === 'needs-interaction' || (!player.isPlayingLocally && isPlaying)) {
@@ -169,20 +198,43 @@ export function NowPlayingCard({
       {/* ------------------------------------------------------------ header -- */}
       <div className="relative mb-3.5 flex items-center justify-between gap-3 px-1">
         <div className="flex items-center gap-2">
-          <span className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.2em] text-[#a8a29e]">
-            <span
-              className={cn(
-                'h-1.5 w-1.5 rounded-full',
-                isPlaying ? 'bg-[#40E0D0] animate-pulse shadow-[0_0_8px_#40E0D0]' : 'bg-[#78716c]'
-              )}
-            />
-            Now playing
-          </span>
           {track && (
-            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-white/[0.04] border border-white/[0.08] text-[10px] font-medium text-[#fde5b7]">
-              <ProviderIcon className="h-3 w-3 text-[#40E0D0]" />
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/[0.04] border border-white/[0.08] text-[11px] font-medium text-[#fde5b7]">
+              <ProviderIcon className="h-3.5 w-3.5 text-[#40E0D0]" />
               {providerLabel(track.provider)}
             </span>
+          )}
+
+          {/* Video / Audio toggle moved OUTSIDE the video playback stage */}
+          {track?.provider === 'youtube' && (
+            <div className="flex rounded-full border border-white/10 bg-white/[0.04] p-0.5 backdrop-blur-md">
+              <button
+                type="button"
+                onClick={() => onYouTubeModeChange('video')}
+                className={cn(
+                  'flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium transition-all cursor-pointer',
+                  youtubeMode === 'video'
+                    ? 'bg-[#40E0D0]/20 text-[#40E0D0] font-semibold border border-[#40E0D0]/30 shadow-[0_0_10px_rgba(64,224,208,0.2)]'
+                    : 'text-[#a8a29e] hover:text-white'
+                )}
+              >
+                <Video className="h-3 w-3" />
+                Video
+              </button>
+              <button
+                type="button"
+                onClick={() => onYouTubeModeChange('audio')}
+                className={cn(
+                  'flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium transition-all cursor-pointer',
+                  youtubeMode === 'audio'
+                    ? 'bg-[#40E0D0]/20 text-[#40E0D0] font-semibold border border-[#40E0D0]/30 shadow-[0_0_10px_rgba(64,224,208,0.2)]'
+                    : 'text-[#a8a29e] hover:text-white'
+                )}
+              >
+                <Radio className="h-3 w-3" />
+                Audio
+              </button>
+            </div>
           )}
         </div>
 
@@ -202,25 +254,31 @@ export function NowPlayingCard({
           {track && (
             <span
               className={cn(
-                'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border text-[10px] font-medium backdrop-blur-md',
+                'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[10px] font-medium backdrop-blur-md',
                 inSync ? 'border-[#40E0D0]/30 text-[#40E0D0] bg-[#40E0D0]/10' : 'border-red-400/30 text-red-400 bg-red-400/10'
               )}
             >
               <span
                 className={cn('h-1.5 w-1.5 rounded-full', inSync ? 'bg-[#40E0D0]' : 'bg-red-400')}
               />
-              {isPlaying ? (inSync ? 'In sync' : `${drift}ms drift`) : 'Paused'}
+              {isPlaying ? (inSync ? 'Locked in sync' : `${drift}ms drift`) : 'Paused'}
             </span>
           )}
-          <button
-            type="button"
-            onClick={handleToggleFullscreen}
-            className="h-8 w-8 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.03] text-[#a8a29e] hover:text-white hover:border-white/20 transition-all inline-flex cursor-pointer"
-            title={isFullscreen ? 'Exit full screen' : 'Full screen video (only video visible)'}
-            aria-label={isFullscreen ? 'Exit full screen' : 'Full screen video'}
-          >
-            {isFullscreen ? <Minimize className="h-3.5 w-3.5" /> : <Maximize className="h-3.5 w-3.5" />}
-          </button>
+
+          {/* Full screen option when playing in video */}
+          {track?.provider === 'youtube' && youtubeMode === 'video' && (
+            <button
+              type="button"
+              onClick={handleToggleFullscreen}
+              className="h-8 px-2.5 items-center gap-1.5 rounded-xl border border-white/[0.1] bg-white/[0.05] text-[#fde5b7] hover:text-white hover:border-white/25 transition-all inline-flex cursor-pointer text-xs font-medium shadow-sm"
+              title={isFullscreen ? 'Exit full screen' : 'Full screen (only video shows)'}
+              aria-label={isFullscreen ? 'Exit full screen' : 'Full screen'}
+            >
+              {isFullscreen ? <Minimize className="h-3.5 w-3.5" /> : <Maximize className="h-3.5 w-3.5" />}
+              <span className="hidden sm:inline">{isFullscreen ? 'Exit Full Screen' : 'Full Screen'}</span>
+            </button>
+          )}
+
           <button
             type="button"
             onClick={onToggleTheater}
@@ -331,37 +389,7 @@ export function NowPlayingCard({
               </div>
             </div>
 
-            {/* view mode toggle for YouTube */}
-            {track.provider === 'youtube' && (
-              <div className="absolute right-3 top-3 z-20 flex rounded-lg border border-cream/15 bg-ink/60 p-0.5 backdrop-blur-md">
-                <button
-                  type="button"
-                  onClick={() => onYouTubeModeChange('video')}
-                  className={cn(
-                    'flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium transition-colors',
-                    youtubeMode === 'video'
-                      ? 'bg-cream/15 text-cream'
-                      : 'text-cream/50 hover:text-cream'
-                  )}
-                >
-                  <Video className="h-3 w-3" />
-                  Video
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onYouTubeModeChange('audio')}
-                  className={cn(
-                    'flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium transition-colors',
-                    youtubeMode === 'audio'
-                      ? 'bg-cream/15 text-cream'
-                      : 'text-cream/50 hover:text-cream'
-                  )}
-                >
-                  <Radio className="h-3 w-3" />
-                  Audio
-                </button>
-              </div>
-            )}
+
 
             {/* player overlays */}
             {player.phase === 'loading' && (
@@ -568,12 +596,12 @@ export function NowPlayingCard({
           <button
             type="button"
             onClick={() => emit('settings:update', { settings: { isShuffle: !room.settings.isShuffle } })}
-            disabled={!isAdmin}
+            disabled={!canControl}
             className={cn(
               'icon-btn relative',
               room.settings.isShuffle && 'bg-white/10 text-[#fde5b7]'
             )}
-            title="Shuffle (admin)"
+            title={canControl ? 'Shuffle' : 'Playback control is host-only'}
             aria-label="Toggle shuffle"
           >
             <Shuffle className="h-4 w-4" />
@@ -584,9 +612,9 @@ export function NowPlayingCard({
           <button
             type="button"
             onClick={() => emit('playback:prev')}
-            disabled={!isAdmin || !track}
+            disabled={!canControl || !track}
             className="icon-btn"
-            title="Previous (admin)"
+            title={canControl ? 'Previous track' : 'Playback control is host-only'}
             aria-label="Previous track"
           >
             <SkipBack className="h-4 w-4" />
@@ -603,7 +631,7 @@ export function NowPlayingCard({
             (!player.isPlayingLocally && isPlaying) && 'ring-4 ring-[#40E0D0]/50 animate-pulse'
           )}
           title={
-            isAdmin
+            canControl
               ? isPlaying
                 ? 'Pause playback'
                 : 'Play playback'
@@ -613,7 +641,7 @@ export function NowPlayingCard({
           }
           aria-label={isPlaying ? 'Pause' : 'Play'}
         >
-          {isPlaying && (isAdmin || player.isPlayingLocally) ? (
+          {isPlaying && (canControl || player.isPlayingLocally) ? (
             <Pause className="h-6 w-6 fill-black text-black" />
           ) : (
             <Play className="ml-0.5 h-6 w-6 fill-black text-black" />
@@ -624,9 +652,9 @@ export function NowPlayingCard({
           <button
             type="button"
             onClick={() => emit('playback:next')}
-            disabled={!isAdmin || !track}
+            disabled={!canControl || !track}
             className="icon-btn"
-            title="Next (admin)"
+            title={canControl ? 'Next track' : 'Playback control is host-only'}
             aria-label="Next track"
           >
             <SkipForward className="h-4 w-4" />
@@ -634,12 +662,12 @@ export function NowPlayingCard({
           <button
             type="button"
             onClick={cycleRepeat}
-            disabled={!isAdmin}
+            disabled={!canControl}
             className={cn(
               'icon-btn relative',
               room.settings.repeatMode !== 'off' && 'bg-white/10 text-[#fde5b7]'
             )}
-            title={`Repeat: ${room.settings.repeatMode} (admin)`}
+            title={`Repeat: ${room.settings.repeatMode}`}
             aria-label="Cycle repeat mode"
           >
             {room.settings.repeatMode === 'one' ? (

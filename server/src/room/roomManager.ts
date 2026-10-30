@@ -142,6 +142,7 @@ export class RoomManager {
         repeatMode: 'all',
         isShuffle: false,
         sharedVolume: 100,
+        playbackControl: 'admin',
       },
       version: now,
     };
@@ -504,6 +505,25 @@ export class RoomManager {
       Boolean(room.state.users.find((user) => user.id === userId)?.isAdmin);
   }
 
+  public canControl(roomCode: string, userId: string): boolean {
+    const room = this.rooms.get(roomCode);
+    if (!room) return false;
+
+    // Admin always has control
+    if (this.isAdmin(roomCode, userId)) return true;
+
+    // If room is set to 'anyone' control, all members have control
+    if (room.state.settings.playbackControl === 'anyone') return true;
+
+    // When admin is offline or left, all online listeners have control until admin comes back!
+    const adminOnline = room.state.users.some((user) => user.isAdmin && user.isOnline);
+    if (!adminOnline) {
+      return true;
+    }
+
+    return false;
+  }
+
   public updateUserMetrics(
     roomCode: string,
     userId: string,
@@ -858,6 +878,9 @@ export class RoomManager {
     if (typeof settings.isShuffle === 'boolean') {
       next.isShuffle = settings.isShuffle;
     }
+    if (settings.playbackControl && ['admin', 'anyone'].includes(settings.playbackControl)) {
+      next.playbackControl = settings.playbackControl;
+    }
     if (typeof settings.sharedVolume === 'number' && Number.isFinite(settings.sharedVolume)) {
       next.sharedVolume = Math.max(0, Math.min(100, Math.round(settings.sharedVolume)));
     }
@@ -905,8 +928,8 @@ export class RoomManager {
   private requireAdminRoom(roomCode: string, userId: string): InternalRoom {
     const room = this.rooms.get(roomCode);
     if (!room) throw new RoomError('That room is no longer active.', 'NOT_FOUND');
-    if (!this.isAdmin(roomCode, userId)) {
-      throw new RoomError('Only the room admin can control playback or the queue.', 'FORBIDDEN');
+    if (!this.canControl(roomCode, userId)) {
+      throw new RoomError('Playback control is currently restricted to the host.', 'FORBIDDEN');
     }
     this.touch(roomCode);
     return room;
