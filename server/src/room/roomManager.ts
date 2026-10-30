@@ -143,6 +143,8 @@ export class RoomManager {
         isShuffle: false,
         sharedVolume: 100,
         playbackControl: 'admin',
+        crossfade: 4,
+        automix: true,
       },
       version: now,
     };
@@ -884,6 +886,12 @@ export class RoomManager {
     }
     if (typeof settings.sharedVolume === 'number' && Number.isFinite(settings.sharedVolume)) {
       next.sharedVolume = Math.max(0, Math.min(100, Math.round(settings.sharedVolume)));
+    }
+    if (typeof settings.crossfade === 'number' && Number.isFinite(settings.crossfade)) {
+      next.crossfade = Math.max(0, Math.min(12, Math.round(settings.crossfade)));
+    }
+    if (typeof settings.automix === 'boolean') {
+      next.automix = settings.automix;
     }
 
     room.state.settings = next;

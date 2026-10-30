@@ -55,6 +55,8 @@ export interface RoomSettings {
   isShuffle: boolean;
   sharedVolume: number;
   playbackControl?: 'admin' | 'anyone';
+  crossfade?: number;
+  automix?: boolean;
 }
 
 export interface RoomState {

@@ -292,7 +292,7 @@ class VirtualRoomEngine {
         queue: [],
         currentIndex: 0,
         users: [user],
-        settings: { repeatMode: 'all', isShuffle: false, sharedVolume: 100 },
+        settings: { repeatMode: 'all', isShuffle: false, sharedVolume: 100, crossfade: 4, automix: true },
         version: now,
       };
 
@@ -348,7 +348,7 @@ class VirtualRoomEngine {
           queue: [],
           currentIndex: 0,
           users: [user],
-          settings: { repeatMode: 'all', isShuffle: false, sharedVolume: 100 },
+          settings: { repeatMode: 'all', isShuffle: false, sharedVolume: 100, crossfade: 4, automix: true },
           version: now,
         };
 

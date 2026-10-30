@@ -18,6 +18,7 @@ import {
   CURATED_TRACKS,
   resolveDirectMedia,
 } from '../services/musicLibrary.js';
+import { fetchTrendingTracks } from '../services/freeToUse.js';
 import type { MediaItemInput } from '../types.js';
 import { formatDuration } from '../lib/format.js';
 
@@ -30,13 +31,15 @@ interface AddMediaModalProps {
 type ModalTab = 'library' | 'link' | 'upload';
 
 const POPULAR_QUERIES = [
-  'The Weeknd',
-  'Daft Punk',
-  'Coldplay',
-  'Dua Lipa',
-  'Post Malone',
-  'Lofi Beats',
-  'Synthwave',
+  'Chill',
+  'Electronic',
+  'Lofi',
+  'Ambient',
+  'Aesthetic',
+  'EDM',
+  'Piano',
+  'Summer',
+  'Rock',
 ];
 
 export function AddMediaModal({ open, onClose, notify }: AddMediaModalProps) {
@@ -59,7 +62,13 @@ export function AddMediaModal({ open, onClose, notify }: AddMediaModalProps) {
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    if (!open) {
+    if (open) {
+      void fetchTrendingTracks(20).then((tracks) => {
+        if (tracks.length > 0 && !searchQuery) {
+          setSearchResults(tracks);
+        }
+      });
+    } else {
       setSearchQuery('');
       setSearchResults(CURATED_TRACKS);
       setLinkInput('');
@@ -255,7 +264,7 @@ export function AddMediaModal({ open, onClose, notify }: AddMediaModalProps) {
                   autoFocus
                   value={searchQuery}
                   onChange={(e) => handleQueryChange(e.target.value)}
-                  placeholder="Search by song name, artist, or album..."
+                  placeholder="Search FreeToUse music library, artists, vibes, or paste links..."
                   className="w-full pl-10 pr-10 py-3 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder:text-[#a8a29e] text-sm focus:outline-none focus:border-[#40E0D0]/60 focus:bg-white/[0.06] transition-all"
                 />
                 {searchQuery && (
@@ -320,9 +329,16 @@ export function AddMediaModal({ open, onClose, notify }: AddMediaModalProps) {
                           </div>
                         )}
                         <div className="min-w-0">
-                          <p className="text-sm font-semibold text-white truncate group-hover:text-[#fde5b7] transition-colors">
-                            {track.title}
-                          </p>
+                          <div className="flex items-center gap-1.5">
+                            <p className="text-sm font-semibold text-white truncate group-hover:text-[#fde5b7] transition-colors">
+                              {track.title}
+                            </p>
+                            {track.provider === 'audio' && (
+                              <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-[#40E0D0]/10 text-[#40E0D0] border border-[#40E0D0]/20 shrink-0">
+                                Audio
+                              </span>
+                            )}
+                          </div>
                           <p className="text-xs text-[#a8a29e] truncate">
                             {track.artist}
                             {track.album && ` · ${track.album}`}

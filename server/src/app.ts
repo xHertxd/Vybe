@@ -11,6 +11,7 @@ import type { MediaItemInput } from './types.js';
 import { MediaResolver } from './media/mediaResolver.js';
 import { MediaSynchronizationEngine } from './sync/mediaSynchronizationEngine.js';
 import { RoomManager, RoomError } from './room/roomManager.js';
+import { freeToUseService } from './services/freeToUseService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -168,14 +169,55 @@ export function createVybeServer() {
   app.get('/api/search', async (req, res) => {
     try {
       const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+      const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 20));
+
       if (!q) {
-        res.json({ success: true, results: [] });
+        const trending = await freeToUseService.getTrending(limit);
+        res.json({ success: true, results: trending });
         return;
       }
-      const results = await searchYouTubeTracks(q);
-      res.json({ success: true, results });
+
+      // Search FreeToUse library first
+      const freeToUseResults = await freeToUseService.search(q, limit);
+
+      // Search YouTube concurrently for mainstream pop/video coverage
+      const youtubeResults = await searchYouTubeTracks(q).catch(() => []);
+
+      // Deduplicate and combine (FreeToUse direct audio tracks prioritized first!)
+      const combined = [...freeToUseResults, ...youtubeResults];
+      res.json({ success: true, results: combined.slice(0, limit) });
     } catch {
       res.json({ success: true, results: [] });
+    }
+  });
+
+  app.get('/api/library/trending', async (req, res) => {
+    try {
+      const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 20));
+      const tracks = await freeToUseService.getTrending(limit);
+      res.json({ success: true, tracks });
+    } catch {
+      res.json({ success: true, tracks: [] });
+    }
+  });
+
+  app.get('/api/library/categories', async (_req, res) => {
+    try {
+      const categories = await freeToUseService.getCategories();
+      res.json({ success: true, categories });
+    } catch {
+      res.json({ success: true, categories: [] });
+    }
+  });
+
+  app.get('/api/library/category/:id', async (req, res) => {
+    try {
+      const categoryId = req.params.id;
+      const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 20));
+      const tracks = await freeToUseService.getTracksByCategory(categoryId, limit);
+      res.json({ success: true, tracks });
+    } catch {
+      res.json({ success: true, tracks: [] });
     }
   });
 
@@ -196,7 +238,29 @@ export function createVybeServer() {
         res.status(400).json({ success: false, error: 'A media URL is required.' });
         return;
       }
-      const data = await mediaResolver.resolve(url.trim());
+
+      const cleanUrl = url.trim();
+
+      // Check if FreeToUse URL
+      if (/freetouse\.com/i.test(cleanUrl)) {
+        const ftuTrack = await freeToUseService.resolveUrl(cleanUrl);
+        if (ftuTrack) {
+          res.json({
+            success: true,
+            data: {
+              provider: 'audio',
+              sourceType: 'track',
+              title: ftuTrack.title,
+              artist: ftuTrack.artist,
+              thumbnail: ftuTrack.thumbnail,
+              items: [ftuTrack],
+            },
+          });
+          return;
+        }
+      }
+
+      const data = await mediaResolver.resolve(cleanUrl);
       res.json({ success: true, data });
     } catch (error) {
       res.status(400).json({ success: false, error: errorPayload(error).message });

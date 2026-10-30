@@ -410,6 +410,75 @@ export function SidePanel({
                 </p>
               )}
             </div>
+
+            {/* DJ Automix & Crossfade */}
+            <div className="rounded-2xl border border-white/10 bg-[#1c1c1f]/80 p-3.5 backdrop-blur-md space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="grid h-6 w-6 place-items-center rounded-lg bg-[#40E0D0]/15 text-[#40E0D0]">
+                    <Music2 className="h-3.5 w-3.5" />
+                  </div>
+                  <div>
+                    <p className="text-[11.5px] font-semibold text-white">DJ Automix & Crossfade</p>
+                    <p className="text-[9.5px] text-[#a8a29e]">Seamless transitions between tracks</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  disabled={!canControl}
+                  onClick={() => {
+                    const nextVal = !(room.settings.automix ?? true);
+                    socket.emit('settings:update', {
+                      roomCode: room.roomCode,
+                      settings: { automix: nextVal, crossfade: nextVal ? (room.settings.crossfade || 4) : 0 },
+                    });
+                    notify('Automix updated', nextVal ? 'DJ Automix enabled (4s crossfade)' : 'Automix disabled', 'info');
+                  }}
+                  className={cn(
+                    'px-2.5 py-1 rounded-full text-[10px] font-semibold transition-all cursor-pointer border',
+                    (room.settings.automix ?? true)
+                      ? 'bg-[#40E0D0]/20 text-[#40E0D0] border-[#40E0D0]/30 shadow-sm'
+                      : 'bg-white/5 text-[#a8a29e] border-white/10 hover:text-white'
+                  )}
+                >
+                  {(room.settings.automix ?? true) ? 'Active' : 'Off'}
+                </button>
+              </div>
+
+              {/* Crossfade Duration Pills */}
+              <div>
+                <div className="flex items-center justify-between text-[10px] text-[#a8a29e] mb-1.5 px-0.5">
+                  <span>Crossfade Duration</span>
+                  <span className="font-mono text-[#fde5b7]">
+                    {room.settings.crossfade ? `${room.settings.crossfade}s` : 'Off'}
+                  </span>
+                </div>
+                <div className="grid grid-cols-5 gap-1 rounded-xl bg-[#161619] border border-white/10 p-1">
+                  {[0, 2, 4, 6, 8].map((sec) => (
+                    <button
+                      key={sec}
+                      type="button"
+                      disabled={!canControl}
+                      onClick={() => {
+                        socket.emit('settings:update', {
+                          roomCode: room.roomCode,
+                          settings: { crossfade: sec, automix: sec > 0 },
+                        });
+                        notify('Crossfade updated', sec === 0 ? 'Crossfade turned off' : `${sec}s smooth crossfade`, 'info');
+                      }}
+                      className={cn(
+                        'py-1 rounded-lg text-[10px] font-medium transition-all text-center cursor-pointer',
+                        (room.settings.crossfade ?? 4) === sec
+                          ? 'bg-[#fde5b7] text-black font-bold shadow-sm'
+                          : 'text-[#a8a29e] hover:text-white hover:bg-white/5 disabled:opacity-40'
+                      )}
+                    >
+                      {sec === 0 ? 'Off' : `${sec}s`}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
           </div>
 
           <div className="mt-4 flex items-center justify-between px-1">

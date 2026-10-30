@@ -267,6 +267,16 @@ export function NowPlayingCard({
             </span>
           )}
 
+          {track && (room.settings.automix ?? true) && (
+            <span
+              className="hidden md:inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-white/10 bg-white/5 text-[10px] font-mono text-[#fde5b7]/90"
+              title={`DJ Crossfade active (${room.settings.crossfade ?? 4}s)`}
+            >
+              <Sparkles className="h-2.5 w-2.5 text-[#40E0D0]" />
+              <span>Automix {room.settings.crossfade ?? 4}s</span>
+            </span>
+          )}
+
           {/* Full screen option for phones and desktops */}
           {track && (
             <button
@@ -421,24 +431,25 @@ export function NowPlayingCard({
             )}
 
             {player.phase === 'needs-interaction' && (
-              <div className="absolute inset-0 z-30 grid place-items-center bg-ink/75 p-6 backdrop-blur-md">
-                <div className="max-w-xs text-center">
-                  <div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl border border-cream/15 bg-cream/10">
-                    <Volume2 className="h-5 w-5 text-cream" />
+              <div
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void player.activate();
+                }}
+                className="absolute inset-x-3 top-3 z-30 flex items-center justify-between gap-3 p-3 rounded-2xl bg-[#fde5b7] text-black shadow-2xl cursor-pointer hover:bg-[#fee8c8] active:scale-95 transition-all"
+              >
+                <div className="flex items-center gap-2.5">
+                  <div className="h-8 w-8 rounded-xl bg-black/10 grid place-items-center shrink-0">
+                    <Volume2 className="h-4 w-4 text-black animate-pulse" />
                   </div>
-                  <p className="mt-3 text-sm font-semibold text-cream">Your browser is waiting</p>
-                  <p className="mt-1 text-[11px] leading-relaxed text-cream/55">
-                    Tap once to allow audio for this room. Sync is already running.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => void player.activate()}
-                    className="btn btn-primary mt-4 h-9 border-cream/20 bg-cream px-4 text-xs text-ink hover:bg-linen"
-                  >
-                    <Play className="h-3.5 w-3.5" />
-                    Enable audio
-                  </button>
+                  <div className="text-left">
+                    <p className="text-xs font-bold leading-tight">Tap anywhere to hear audio</p>
+                    <p className="text-[10px] text-black/75 leading-tight">In sync with room · BeatSync active</p>
+                  </div>
                 </div>
+                <span className="px-3 py-1.5 rounded-xl bg-black text-[#fde5b7] text-xs font-bold shrink-0">
+                  Play Now
+                </span>
               </div>
             )}
 

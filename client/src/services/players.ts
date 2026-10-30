@@ -13,6 +13,7 @@ export interface PlayerAdapter {
   seek(seconds: number): void;
   setRate(rate: number): void;
   setVolume(volume: number): void;
+  fade?(from: number, to: number, durationMs: number): void;
   prime?(position: number, shouldPlay: boolean): void | Promise<void>;
   destroy(): void;
 }
@@ -84,6 +85,18 @@ export class HowlerAudioAdapter implements PlayerAdapter {
         this.sound?.once('unlock', () => {
           this.sound?.play();
         });
+        // Auto-play on the very next touch anywhere on the page for mobile browsers
+        const onTouch = () => {
+          window.removeEventListener('touchstart', onTouch, true);
+          window.removeEventListener('touchend', onTouch, true);
+          window.removeEventListener('click', onTouch, true);
+          if (this.sound && !this.sound.playing()) {
+            this.sound.play();
+          }
+        };
+        window.addEventListener('touchstart', onTouch, { capture: true, once: true });
+        window.addEventListener('touchend', onTouch, { capture: true, once: true });
+        window.addEventListener('click', onTouch, { capture: true, once: true });
       },
     });
 
@@ -124,7 +137,22 @@ export class HowlerAudioAdapter implements PlayerAdapter {
       await Howler.ctx.resume().catch(() => {});
     }
     if (!this.sound.playing()) {
-      this.sound.play();
+      try {
+        this.sound.play();
+      } catch (err) {
+        const onTouch = () => {
+          window.removeEventListener('touchstart', onTouch, true);
+          window.removeEventListener('touchend', onTouch, true);
+          window.removeEventListener('click', onTouch, true);
+          if (this.sound && !this.sound.playing()) {
+            this.sound.play();
+          }
+        };
+        window.addEventListener('touchstart', onTouch, { capture: true, once: true });
+        window.addEventListener('touchend', onTouch, { capture: true, once: true });
+        window.addEventListener('click', onTouch, { capture: true, once: true });
+        throw err;
+      }
     }
   }
 
@@ -162,6 +190,13 @@ export class HowlerAudioAdapter implements PlayerAdapter {
   public setVolume(volume: number): void {
     this.volume = Math.max(0, Math.min(1, volume));
     this.sound?.volume(this.volume);
+  }
+
+  public fade(from: number, to: number, durationMs: number): void {
+    if (!this.sound) return;
+    try {
+      this.sound.fade(from, to, durationMs);
+    } catch {}
   }
 
   public destroy(): void {
@@ -238,6 +273,23 @@ export class AudioAdapter implements PlayerAdapter {
 
   public setVolume(volume: number): void {
     this.element.volume = Math.max(0, Math.min(1, volume));
+  }
+
+  public fade(from: number, to: number, durationMs: number): void {
+    const startTime = performance.now();
+    const duration = Math.max(50, durationMs);
+    const startVol = Math.max(0, Math.min(1, from));
+    const targetVol = Math.max(0, Math.min(1, to));
+
+    const step = () => {
+      const elapsed = performance.now() - startTime;
+      const progress = Math.min(1, elapsed / duration);
+      this.element.volume = startVol + (targetVol - startVol) * progress;
+      if (progress < 1) {
+        requestAnimationFrame(step);
+      }
+    };
+    step();
   }
 
   public destroy(): void {
@@ -495,6 +547,28 @@ export class YouTubeAdapter implements PlayerAdapter {
     } catch {
       // ignore
     }
+  }
+
+  public fade(from: number, to: number, durationMs: number): void {
+    const startTime = performance.now();
+    const duration = Math.max(50, durationMs);
+    const startVol = Math.max(0, Math.min(1, from)) * 100;
+    const targetVol = Math.max(0, Math.min(1, to)) * 100;
+
+    const step = () => {
+      const elapsed = performance.now() - startTime;
+      const progress = Math.min(1, elapsed / duration);
+      const current = Math.round(startVol + (targetVol - startVol) * progress);
+      try {
+        if (typeof this.player?.setVolume === 'function') {
+          this.player.setVolume(current);
+        }
+      } catch {}
+      if (progress < 1) {
+        requestAnimationFrame(step);
+      }
+    };
+    step();
   }
 
   public destroy(): void {

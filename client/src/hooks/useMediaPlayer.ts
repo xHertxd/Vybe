@@ -11,6 +11,7 @@ import {
   type PlayerAdapter,
 } from '../services/players.js';
 import { positionAt, waitUntilStart } from '../lib/playback.js';
+import { audioUnlocker } from '../services/audioUnlocker.js';
 
 type PlayerPhase = 'idle' | 'loading' | 'ready' | 'needs-interaction' | 'needs-spotify' | 'error';
 
@@ -21,6 +22,7 @@ interface UseMediaPlayerOptions {
   volume: number;
   spotifyConnected: boolean;
   spotifyVersion: number;
+  crossfade?: number;
 }
 
 function audioSource(track: MediaItem): string {
@@ -39,11 +41,14 @@ export function useMediaPlayer({
   volume,
   spotifyConnected,
   spotifyVersion,
+  crossfade = 4,
 }: UseMediaPlayerOptions) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const youtubeHostRef = useRef<HTMLDivElement | null>(null);
 
   const adapterRef = useRef<PlayerAdapter | null>(null);
+  const outgoingAdapterRef = useRef<PlayerAdapter | null>(null);
+  const outgoingFadeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [adapterTick, setAdapterTick] = useState(0);
   const [phase, setPhase] = useState<PlayerPhase>('idle');
   const [error, setError] = useState<string | null>(null);
@@ -62,7 +67,20 @@ export function useMediaPlayer({
   const previousTrackId = useRef<string | null>(null);
   const smoothedDrift = useRef(0);
 
-  // Tear down / build an adapter whenever the track changes.
+  // Auto-resume playback seamlessly as soon as user touches the screen
+  useEffect(() => {
+    return audioUnlocker.onUnlock(() => {
+      if (playbackRef.current.status === 'playing') {
+        const adapter = adapterRef.current;
+        if (adapter && (!adapter.isPlaying || !adapter.isPlaying())) {
+          void Promise.resolve(adapter.play()).catch(() => {});
+          setPhase('ready');
+        }
+      }
+    });
+  }, []);
+
+  // Tear down / build an adapter whenever the track changes (with DJ crossfade).
   useEffect(() => {
     if (startTimer.current) clearTimeout(startTimer.current);
     startTimer.current = null;
@@ -76,7 +94,34 @@ export function useMediaPlayer({
 
     const previous = adapterRef.current;
     adapterRef.current = null;
-    previous?.destroy();
+    const fadeDurationSec = crossfade ?? 4;
+    const isPreviousPlaying = Boolean(previous && previous.isPlaying && previous.isPlaying());
+
+    // DJ Automix / Crossfade: smooth fade out of outgoing track
+    if (previous) {
+      if (isPreviousPlaying && fadeDurationSec > 0 && previous.fade) {
+        if (outgoingFadeTimer.current) clearTimeout(outgoingFadeTimer.current);
+        if (outgoingAdapterRef.current) {
+          try { outgoingAdapterRef.current.destroy(); } catch {}
+        }
+        outgoingAdapterRef.current = previous;
+        const fadeMs = Math.min(fadeDurationSec * 1000, 2500);
+        try {
+          previous.fade(volume, 0, fadeMs);
+        } catch {}
+        outgoingFadeTimer.current = setTimeout(() => {
+          try {
+            outgoingAdapterRef.current?.destroy();
+          } catch {}
+          outgoingAdapterRef.current = null;
+          outgoingFadeTimer.current = null;
+        }, fadeMs + 50);
+      } else {
+        try {
+          previous.destroy();
+        } catch {}
+      }
+    }
     setAdapterTick(0);
 
     if (!track) {
@@ -90,16 +135,20 @@ export function useMediaPlayer({
     let cancelled = false;
     const initialNow = clockSync.getServerNow();
     const initialTarget = positionAt(playbackRef.current, initialNow);
+    const initialVolume = (isPreviousPlaying && fadeDurationSec > 0) ? 0 : volume;
 
     if (track.provider === 'audio') {
       const src = audioSource(track);
       const adapter = new HowlerAudioAdapter(
         src,
-        volume,
+        initialVolume,
         () => {
           if (cancelled) return;
           setPhase('ready');
           setAdapterTick((tick) => tick + 1);
+          if (isPreviousPlaying && fadeDurationSec > 0 && adapter.fade) {
+            adapter.fade(0, volume, Math.min(fadeDurationSec * 1000, 2500));
+          }
         },
         () => {
           if (endedForTrack.current !== track.id) {
@@ -240,13 +289,17 @@ export function useMediaPlayer({
               startTimer.current = setTimeout(() => {
                 adapterRef.current?.setRate(1);
                 void Promise.resolve(adapterRef.current?.play()).catch(() => {
-                  setPhase('needs-interaction');
+                  if (!audioUnlocker.isUnlocked()) {
+                    setPhase('needs-interaction');
+                  }
                 });
               }, wait);
             } else {
               activeAdapter.setRate(1);
               void Promise.resolve(activeAdapter.play()).catch(() => {
-                setPhase('needs-interaction');
+                if (!audioUnlocker.isUnlocked()) {
+                  setPhase('needs-interaction');
+                }
               });
             }
             setPhase('ready');
@@ -349,9 +402,17 @@ export function useMediaPlayer({
         setDriftMs(driftMillis);
 
         const duration = track.duration || (active.currentTrack?.duration ?? 0);
-        if (duration > 0 && (position >= duration - 0.4 || target >= duration - 0.4)) {
+        const fadeSec = crossfade ?? 4;
+        const triggerThreshold = fadeSec > 0 ? Math.max(1, fadeSec) : 0.4;
+
+        if (duration > 0 && (position >= duration - triggerThreshold || target >= duration - triggerThreshold)) {
           if (endedForTrack.current !== track.id) {
             endedForTrack.current = track.id;
+            if (fadeSec > 0 && adapter.fade) {
+              try {
+                adapter.fade(volume, 0, fadeSec * 1000);
+              } catch {}
+            }
             socket.emit('track:ended', { roomCode, trackId: track.id });
             socket.emit('playback:track_ended', { roomCode, trackId: track.id });
           }
@@ -412,7 +473,8 @@ export function useMediaPlayer({
 
         if (adapter.isPlaying && !adapter.isPlaying()) {
           notPlayingTicks.current += 1;
-          if (notPlayingTicks.current >= 5) {
+          // Wait at least 6s (24 ticks) for mobile buffering, and only prompt if never interacted
+          if (notPlayingTicks.current >= 24 && !audioUnlocker.isUnlocked()) {
             setPhase('needs-interaction');
             try {
               void Promise.resolve(adapter.play());
@@ -589,8 +651,11 @@ export function useMediaPlayer({
   useEffect(() => {
     return () => {
       if (startTimer.current) clearTimeout(startTimer.current);
+      if (outgoingFadeTimer.current) clearTimeout(outgoingFadeTimer.current);
       adapterRef.current?.destroy();
       adapterRef.current = null;
+      outgoingAdapterRef.current?.destroy();
+      outgoingAdapterRef.current = null;
     };
   }, []);
 

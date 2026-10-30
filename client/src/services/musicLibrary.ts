@@ -2,41 +2,101 @@ import type { MediaItemInput } from '../types.js';
 import { getApiUrl } from './socket.js';
 
 export const CURATED_TRACKS: MediaItemInput[] = [
-  // --- Vybe Native Audio Tracks (100% Direct HTML5 Audio - Instant start, zero ads, zero iframe) ---
+  // --- FreeToUse Music Library (High Fidelity Royalty-Free MP3 Streams - Instant start, zero ads, BeatSync) ---
   {
     provider: 'audio',
     sourceType: 'track',
-    mediaId: 'helix_1',
-    url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3',
-    title: 'SoundHelix Symphony No. 1',
-    artist: 'SoundHelix Electro',
-    album: 'Vybe Audio Sessions',
-    thumbnail: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=600&auto=format&fit=crop&q=80',
-    duration: 372,
+    mediaId: 'freetouse_60974ab4-afa7-211d-3ffc-09fdbaff8e58',
+    url: 'https://eu.data.freetouse.com/music/tracks/60974ab4-afa7-211d-3ffc-09fdbaff8e58/file/mp3/file.mp3',
+    title: 'Enlivening',
+    artist: 'Pufino',
+    album: 'Electronic · Free To Use',
+    thumbnail: 'https://eu.data.freetouse.com/music/tracks/60974ab4-afa7-211d-3ffc-09fdbaff8e58/cover/webp/md/cover-md.webp',
+    duration: 153,
     isPlayable: true,
   },
   {
     provider: 'audio',
     sourceType: 'track',
-    mediaId: 'helix_2',
-    url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3',
-    title: 'Neon Odyssey',
-    artist: 'SoundHelix Synthwave',
-    album: 'Vybe Audio Sessions',
-    thumbnail: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=600&auto=format&fit=crop&q=80',
-    duration: 425,
+    mediaId: 'freetouse_8a530b0e-0b17-79c0-0aa9-ba19abff4ad3',
+    url: 'https://eu.data.freetouse.com/music/tracks/8a530b0e-0b17-79c0-0aa9-ba19abff4ad3/file/mp3/file.mp3',
+    title: 'Last Summer',
+    artist: 'Aylex',
+    album: 'Electronic · Free To Use',
+    thumbnail: 'https://eu.data.freetouse.com/music/tracks/8a530b0e-0b17-79c0-0aa9-ba19abff4ad3/cover/webp/md/cover-md.webp',
+    duration: 173,
     isPlayable: true,
   },
   {
     provider: 'audio',
     sourceType: 'track',
-    mediaId: 'helix_3',
-    url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3',
-    title: 'Midnight Horizon',
-    artist: 'SoundHelix Chill',
-    album: 'Vybe Audio Sessions',
-    thumbnail: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=600&auto=format&fit=crop&q=80',
-    duration: 344,
+    mediaId: 'freetouse_9979b59f-d2e4-442f-a893-39c2e81f8b4f',
+    url: 'https://eu.data.freetouse.com/music/tracks/9979b59f-d2e4-442f-a893-39c2e81f8b4f/file/mp3/file.mp3',
+    title: 'Nothing',
+    artist: 'Damtaro',
+    album: 'Electronic · Free To Use',
+    thumbnail: 'https://eu.data.freetouse.com/music/tracks/9979b59f-d2e4-442f-a893-39c2e81f8b4f/cover/webp/md/cover-md.webp',
+    duration: 199,
+    isPlayable: true,
+  },
+  {
+    provider: 'audio',
+    sourceType: 'track',
+    mediaId: 'freetouse_fc95e0bb-e942-4c4b-874b-a194fd200cf3',
+    url: 'https://eu.data.freetouse.com/music/tracks/fc95e0bb-e942-4c4b-874b-a194fd200cf3/file/mp3/file.mp3',
+    title: 'Akaneiro',
+    artist: 'Johny Grimes',
+    album: 'Chill · Free To Use',
+    thumbnail: 'https://eu.data.freetouse.com/music/tracks/fc95e0bb-e942-4c4b-874b-a194fd200cf3/cover/webp/md/cover-md.webp',
+    duration: 126,
+    isPlayable: true,
+  },
+  {
+    provider: 'audio',
+    sourceType: 'track',
+    mediaId: 'freetouse_253bde6c-990f-47d3-94a4-5c2595cc4b32',
+    url: 'https://eu.data.freetouse.com/music/tracks/253bde6c-990f-47d3-94a4-5c2595cc4b32/file/mp3/file.mp3',
+    title: 'Lighthearted',
+    artist: 'Zambolino',
+    album: 'Chill · Free To Use',
+    thumbnail: 'https://eu.data.freetouse.com/music/tracks/253bde6c-990f-47d3-94a4-5c2595cc4b32/cover/webp/md/cover-md.webp',
+    duration: 154,
+    isPlayable: true,
+  },
+  {
+    provider: 'audio',
+    sourceType: 'track',
+    mediaId: 'freetouse_bb28e71c-5e67-49f3-a2fe-04f227b05de3',
+    url: 'https://eu.data.freetouse.com/music/tracks/bb28e71c-5e67-49f3-a2fe-04f227b05de3/file/mp3/file.mp3',
+    title: 'Feathers',
+    artist: 'Zambolino',
+    album: 'Folk Acoustic · Free To Use',
+    thumbnail: 'https://eu.data.freetouse.com/music/tracks/bb28e71c-5e67-49f3-a2fe-04f227b05de3/cover/webp/md/cover-md.webp',
+    duration: 143,
+    isPlayable: true,
+  },
+  {
+    provider: 'audio',
+    sourceType: 'track',
+    mediaId: 'freetouse_e0f78f6d-3922-5272-2291-89120e4eaa6d',
+    url: 'https://eu.data.freetouse.com/music/tracks/e0f78f6d-3922-5272-2291-89120e4eaa6d/file/mp3/file.mp3',
+    title: 'Maui',
+    artist: 'Hazelwood',
+    album: 'Electronic · Free To Use',
+    thumbnail: 'https://eu.data.freetouse.com/music/tracks/e0f78f6d-3922-5272-2291-89120e4eaa6d/cover/webp/md/cover-md.webp',
+    duration: 138,
+    isPlayable: true,
+  },
+  {
+    provider: 'audio',
+    sourceType: 'track',
+    mediaId: 'freetouse_743cfa46-c6b4-28f7-0436-ee5d5d6055ff',
+    url: 'https://eu.data.freetouse.com/music/tracks/743cfa46-c6b4-28f7-0436-ee5d5d6055ff/file/mp3/file.mp3',
+    title: 'Building Dreams',
+    artist: 'Aylex',
+    album: 'Electronic · Free To Use',
+    thumbnail: 'https://eu.data.freetouse.com/music/tracks/743cfa46-c6b4-28f7-0436-ee5d5d6055ff/cover/webp/md/cover-md.webp',
+    duration: 126,
     isPlayable: true,
   },
   {
@@ -293,10 +353,10 @@ export async function searchSongs(query: string): Promise<MediaItemInput[]> {
       t.artist.toLowerCase().includes(clean.toLowerCase())
   );
 
-  // 1. Primary: YouTube search through backend API (100% full songs, official videos/audios)
+  // 1. Primary: Unified FreeToUse + YouTube search through backend API
   try {
-    const url = getApiUrl(`/api/search?q=${encodeURIComponent(clean)}`);
-    const res = await fetch(url, { signal: AbortSignal.timeout(4500) });
+    const url = getApiUrl(`/api/search?q=${encodeURIComponent(clean)}&limit=25`);
+    const res = await fetch(url, { signal: AbortSignal.timeout(6000) });
     if (res.ok) {
       const data = (await res.json()) as { success?: boolean; results?: MediaItemInput[] };
       if (data.success && data.results && data.results.length > 0) {

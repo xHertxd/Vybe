@@ -119,6 +119,7 @@ export function MusicRoomPage({
     volume,
     spotifyConnected,
     spotifyVersion,
+    crossfade: room.settings.crossfade ?? 4,
   });
 
   useEffect(() => clockSync.subscribe(setClock), []);
