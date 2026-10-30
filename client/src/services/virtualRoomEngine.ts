@@ -1,7 +1,9 @@
+import { joinRoom, type Room } from 'trystero';
 import type {
   MediaItem,
   MediaItemInput,
   PlaybackState,
+  RoomSettings,
   RoomState,
   RoomUser,
 } from '../types.js';
@@ -14,6 +16,8 @@ class VirtualRoomEngine {
   private sessionToken: string = 'tok_' + Math.random().toString(36).slice(2, 11);
   private channel: BroadcastChannel | null = null;
   private eventHandlers = new Map<string, Set<(...args: unknown[]) => void>>();
+  private p2pRoom: Room | null = null;
+  private p2pSendSync: ((data: RoomState) => void) | null = null;
 
   constructor() {
     if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
@@ -53,12 +57,60 @@ class VirtualRoomEngine {
   }
 
   private broadcast(type: string, payload: unknown): void {
+    // 1. Same-device multi-tab broadcast
     if (this.channel) {
       try {
         this.channel.postMessage({ type, payload, roomCode: this.activeRoomCode });
       } catch {
-        // Broadcast failed
+        // BroadcastChannel unavailable
       }
+    }
+
+    // 2. Cross-device WebRTC P2P broadcast
+    if (type === 'sync_state' && this.p2pSendSync && payload) {
+      try {
+        this.p2pSendSync(payload as RoomState);
+      } catch {
+        // P2P send failed
+      }
+    }
+  }
+
+  private setupP2P(roomCode: string): void {
+    if (typeof window === 'undefined') return;
+    if (this.p2pRoom) {
+      try {
+        this.p2pRoom.leave();
+      } catch {
+        // ignore
+      }
+      this.p2pRoom = null;
+      this.p2pSendSync = null;
+    }
+
+    try {
+      this.p2pRoom = joinRoom({ appId: 'vybe-hertx-sync' }, `vybe_room_${roomCode}`);
+      const syncAction = this.p2pRoom.makeAction('sync_state', {
+        onMessage: (remoteState: unknown) => {
+          if (!remoteState) return;
+          const state = remoteState as RoomState;
+          if (!state.roomCode || state.roomCode !== this.activeRoomCode) return;
+
+          const local = this.getStoredRoom(this.activeRoomCode);
+          if (!local || (state.version && state.version > (local.version || 0))) {
+            this.saveRoom(state);
+            this.emit('room:state', state);
+            this.emit('playback:sync', state.playback);
+            this.emit('queue:updated', { queue: state.queue, currentIndex: state.currentIndex });
+          }
+        },
+      });
+
+      this.p2pSendSync = (data: RoomState) => {
+        void syncAction.send(data as any);
+      };
+    } catch (e) {
+      console.warn('WebRTC P2P init skipped:', e);
     }
   }
 
@@ -108,6 +160,7 @@ class VirtualRoomEngine {
       const username = (payload.username as string) || 'Listener';
       const roomCode = String(Math.floor(100000 + Math.random() * 900000));
       this.activeRoomCode = roomCode;
+      this.setupP2P(roomCode);
 
       const user: RoomUser = {
         id: this.currentUserId,
@@ -133,7 +186,7 @@ class VirtualRoomEngine {
         adminId: user.id,
         createdAt: now,
         playback,
-        queue: [],
+        queue: [], // Strictly no demo data!
         currentIndex: 0,
         users: [user],
         settings: { repeatMode: 'all', isShuffle: false, sharedVolume: 100 },
@@ -148,7 +201,7 @@ class VirtualRoomEngine {
           state,
           sessionToken: this.sessionToken,
         });
-      }, 30);
+      }, 20);
       return true;
     }
 
@@ -156,12 +209,12 @@ class VirtualRoomEngine {
       const roomCode = (payload.roomCode as string) || '';
       const username = (payload.username as string) || 'Guest';
       this.activeRoomCode = roomCode;
+      this.setupP2P(roomCode);
 
       let state = this.getStoredRoom(roomCode);
       let isAdmin = false;
 
       if (!state) {
-        // Auto-create if doesn't exist
         isAdmin = true;
         const user: RoomUser = {
           id: this.currentUserId,
@@ -184,7 +237,7 @@ class VirtualRoomEngine {
             playbackRate: 1,
             version: now,
           },
-          queue: [],
+          queue: [], // Strictly no demo data!
           currentIndex: 0,
           users: [user],
           settings: { repeatMode: 'all', isShuffle: false, sharedVolume: 100 },
@@ -220,7 +273,7 @@ class VirtualRoomEngine {
           isNewRoom: isAdmin,
         });
         this.broadcast('sync_state', state);
-      }, 30);
+      }, 20);
       return true;
     }
 
@@ -228,6 +281,7 @@ class VirtualRoomEngine {
       const roomCode = (payload.roomCode as string) || '';
       const username = (payload.username as string) || 'Guest';
       this.activeRoomCode = roomCode;
+      this.setupP2P(roomCode);
       const state = this.getStoredRoom(roomCode);
 
       if (state) {
@@ -247,7 +301,7 @@ class VirtualRoomEngine {
             sessionToken: this.sessionToken,
             reconnected: true,
           });
-        }, 30);
+        }, 20);
         return true;
       }
     }
@@ -274,7 +328,7 @@ class VirtualRoomEngine {
         currentTrack: mediaItem,
         position: 0,
         serverTimestamp: now,
-        scheduledStartTime: now + 200,
+        scheduledStartTime: now + 150,
         playbackRate: 1,
         version: now,
       };
@@ -301,7 +355,7 @@ class VirtualRoomEngine {
         currentTrack: state.queue[index],
         position: 0,
         serverTimestamp: now,
-        scheduledStartTime: now + 200,
+        scheduledStartTime: now + 150,
         playbackRate: 1,
         version: now,
       };
@@ -331,7 +385,6 @@ class VirtualRoomEngine {
 
       state.queue.push(mediaItem);
 
-      // If playback is currently stopped and queue was empty, start playing it
       if (state.playback.status === 'stopped' || !state.playback.currentTrack) {
         state.currentIndex = 0;
         state.playback = {
@@ -339,7 +392,7 @@ class VirtualRoomEngine {
           currentTrack: mediaItem,
           position: 0,
           serverTimestamp: now,
-          scheduledStartTime: now + 300,
+          scheduledStartTime: now + 200,
           playbackRate: 1,
           version: now,
         };
@@ -350,6 +403,25 @@ class VirtualRoomEngine {
 
       this.emit('queue:updated', { queue: state.queue, currentIndex: state.currentIndex });
       this.emit('playback:sync', state.playback);
+      this.broadcast('sync_state', state);
+      return true;
+    }
+
+    if (event === 'queue:reorder') {
+      const roomCode = (payload.roomCode as string) || this.activeRoomCode;
+      const fromIndex = typeof payload.fromIndex === 'number' ? payload.fromIndex : -1;
+      const toIndex = typeof payload.toIndex === 'number' ? payload.toIndex : -1;
+      if (!roomCode || fromIndex < 0 || toIndex < 0) return true;
+
+      const state = this.getStoredRoom(roomCode);
+      if (!state || !state.queue[fromIndex] || !state.queue[toIndex]) return true;
+
+      const [moved] = state.queue.splice(fromIndex, 1);
+      state.queue.splice(toIndex, 0, moved);
+      state.version = now;
+      this.saveRoom(state);
+
+      this.emit('queue:updated', { queue: state.queue, currentIndex: state.currentIndex });
       this.broadcast('sync_state', state);
       return true;
     }
@@ -407,7 +479,7 @@ class VirtualRoomEngine {
 
       state.playback.status = 'playing';
       state.playback.serverTimestamp = now;
-      state.playback.scheduledStartTime = now + 250;
+      state.playback.scheduledStartTime = now + 150;
       state.version = now;
       this.saveRoom(state);
 
@@ -445,7 +517,7 @@ class VirtualRoomEngine {
       const position = typeof payload.position === 'number' ? payload.position : 0;
       state.playback.position = position;
       state.playback.serverTimestamp = now;
-      state.playback.scheduledStartTime = now + 200;
+      state.playback.scheduledStartTime = now + 150;
       state.version = now;
       this.saveRoom(state);
 
@@ -454,53 +526,20 @@ class VirtualRoomEngine {
       return true;
     }
 
-    if (event === 'playback:skip') {
+    if (event === 'playback:next' || (event === 'playback:skip' && payload.direction === 'next')) {
       const roomCode = (payload.roomCode as string) || this.activeRoomCode;
       if (!roomCode) return true;
 
       const state = this.getStoredRoom(roomCode);
       if (!state || state.queue.length === 0) return true;
 
-      const direction = (payload.direction as string) || 'next';
-      if (direction === 'next') {
-        state.currentIndex = (state.currentIndex + 1) % state.queue.length;
-      } else {
-        state.currentIndex = (state.currentIndex - 1 + state.queue.length) % state.queue.length;
-      }
-
-      state.playback = {
-        status: 'playing',
-        currentTrack: state.queue[state.currentIndex] || null,
-        position: 0,
-        serverTimestamp: now,
-        scheduledStartTime: now + 300,
-        playbackRate: 1,
-        version: now,
-      };
-      state.version = now;
-      this.saveRoom(state);
-
-      this.emit('queue:updated', { queue: state.queue, currentIndex: state.currentIndex });
-      this.emit('playback:sync', state.playback);
-      this.broadcast('sync_state', state);
-      return true;
-    }
-
-    if (event === 'track:ended') {
-      const roomCode = (payload.roomCode as string) || this.activeRoomCode;
-      if (!roomCode) return true;
-
-      const state = this.getStoredRoom(roomCode);
-      if (!state || state.queue.length === 0) return true;
-
-      // Next track in queue
       state.currentIndex = (state.currentIndex + 1) % state.queue.length;
       state.playback = {
         status: 'playing',
         currentTrack: state.queue[state.currentIndex] || null,
         position: 0,
         serverTimestamp: now,
-        scheduledStartTime: now + 200,
+        scheduledStartTime: now + 150,
         playbackRate: 1,
         version: now,
       };
@@ -513,7 +552,85 @@ class VirtualRoomEngine {
       return true;
     }
 
+    if (event === 'playback:prev' || (event === 'playback:skip' && payload.direction === 'prev')) {
+      const roomCode = (payload.roomCode as string) || this.activeRoomCode;
+      if (!roomCode) return true;
+
+      const state = this.getStoredRoom(roomCode);
+      if (!state || state.queue.length === 0) return true;
+
+      state.currentIndex = (state.currentIndex - 1 + state.queue.length) % state.queue.length;
+      state.playback = {
+        status: 'playing',
+        currentTrack: state.queue[state.currentIndex] || null,
+        position: 0,
+        serverTimestamp: now,
+        scheduledStartTime: now + 150,
+        playbackRate: 1,
+        version: now,
+      };
+      state.version = now;
+      this.saveRoom(state);
+
+      this.emit('queue:updated', { queue: state.queue, currentIndex: state.currentIndex });
+      this.emit('playback:sync', state.playback);
+      this.broadcast('sync_state', state);
+      return true;
+    }
+
+    if (event === 'track:ended' || event === 'playback:track_ended') {
+      const roomCode = (payload.roomCode as string) || this.activeRoomCode;
+      if (!roomCode) return true;
+
+      const state = this.getStoredRoom(roomCode);
+      if (!state || state.queue.length === 0) return true;
+
+      state.currentIndex = (state.currentIndex + 1) % state.queue.length;
+      state.playback = {
+        status: 'playing',
+        currentTrack: state.queue[state.currentIndex] || null,
+        position: 0,
+        serverTimestamp: now,
+        scheduledStartTime: now + 150,
+        playbackRate: 1,
+        version: now,
+      };
+      state.version = now;
+      this.saveRoom(state);
+
+      this.emit('queue:updated', { queue: state.queue, currentIndex: state.currentIndex });
+      this.emit('playback:sync', state.playback);
+      this.broadcast('sync_state', state);
+      return true;
+    }
+
+    if (event === 'settings:update') {
+      const roomCode = (payload.roomCode as string) || this.activeRoomCode;
+      const settingsInput = payload.settings as Partial<RoomSettings>;
+      if (!roomCode || !settingsInput) return true;
+
+      const state = this.getStoredRoom(roomCode);
+      if (!state) return true;
+
+      state.settings = { ...state.settings, ...settingsInput };
+      state.version = now;
+      this.saveRoom(state);
+
+      this.emit('room:state', state);
+      this.broadcast('sync_state', state);
+      return true;
+    }
+
     if (event === 'room:leave' || event === 'room:end') {
+      if (this.p2pRoom) {
+        try {
+          this.p2pRoom.leave();
+        } catch {
+          // ignore
+        }
+        this.p2pRoom = null;
+        this.p2pSendSync = null;
+      }
       this.activeRoomCode = null;
       return true;
     }

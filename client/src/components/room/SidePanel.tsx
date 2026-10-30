@@ -211,7 +211,7 @@ export function SidePanel({
                           <p
                             className={cn(
                               'line-clamp-1 text-[12px] font-medium',
-                              active ? 'text-ink' : 'text-graphite'
+                              active ? 'text-[#fde5b7] font-semibold' : 'text-white'
                             )}
                           >
                             {item.title}
@@ -296,17 +296,17 @@ export function SidePanel({
               Room code
             </p>
             <div className="mt-1.5 flex items-center justify-between gap-2">
-              <span className="font-mono text-2xl font-semibold tracking-[0.18em] text-ink">
+              <span className="font-mono text-2xl font-bold tracking-[0.18em] text-[#fde5b7]">
                 {room.roomCode}
               </span>
-              <button type="button" onClick={() => void copyCode()} className="icon-btn h-8 w-8" title="Copy code">
+              <button type="button" onClick={() => void copyCode()} className="icon-btn h-8 w-8 text-[#fde5b7]" title="Copy code">
                 {copied ? <Check className="h-4 w-4 text-forest" /> : <Copy className="h-4 w-4" />}
               </button>
             </div>
             <button
               type="button"
               onClick={() => void copyLink()}
-              className="mt-2 w-full rounded-lg border border-sand bg-cream py-1.5 text-[10px] font-medium text-slate transition-colors hover:bg-linen hover:text-ink"
+              className="mt-2 w-full rounded-lg border border-white/10 bg-[#262629] py-1.5 text-[11px] font-medium text-[#fde5b7] transition-colors hover:bg-[#313136]"
             >
               Copy invite link
             </button>

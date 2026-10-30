@@ -101,8 +101,8 @@ export function useRoomSession({ notify, onEntered, onLeft }: UseRoomSessionOpti
         setPhase((prev) => {
           if (prev === 'connecting') {
             notify(
-              'Connection timed out',
-              'Server is not responding. Please make sure the backend is running.',
+              'Taking longer than expected',
+              'Please check your room code and try again.',
               'error'
             );
             return 'idle';
@@ -150,8 +150,8 @@ export function useRoomSession({ notify, onEntered, onLeft }: UseRoomSessionOpti
         setPhase((prev) => {
           if (prev === 'connecting') {
             notify(
-              'Connection timed out',
-              'Server is not responding. Please make sure the backend is running.',
+              'Taking longer than expected',
+              'Please check your room code and try again.',
               'error'
             );
             return 'idle';
@@ -213,23 +213,28 @@ export function useRoomSession({ notify, onEntered, onLeft }: UseRoomSessionOpti
     };
 
     const onDisconnect = () => {
-      setConnected(false);
       resumeInFlight.current = false;
-      if (inRoomRef.current) {
-        setPhase('reconnecting');
-      } else {
-        setPhase('idle');
+      // In virtual/p2p mode, stay connected
+      if (socket.isRealServerConnected) {
+        setConnected(false);
+        if (inRoomRef.current) {
+          setPhase('reconnecting');
+        } else {
+          setPhase('idle');
+        }
       }
     };
 
     const onConnectError = () => {
       clearPendingTimeout();
-      setConnectionIssue(true);
-      setConnected(false);
-      if (inRoomRef.current) {
-        setPhase('reconnecting');
-      } else {
-        setPhase((previous) => (previous === 'connecting' ? 'idle' : previous));
+      if (socket.isRealServerConnected) {
+        setConnectionIssue(true);
+        setConnected(false);
+        if (inRoomRef.current) {
+          setPhase('reconnecting');
+        } else {
+          setPhase((previous) => (previous === 'connecting' ? 'idle' : previous));
+        }
       }
     };
 

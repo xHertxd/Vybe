@@ -24,7 +24,7 @@ export function Waveform({ playing, bars = 56, className, barClassName }: Wavefo
           <span
             key={index}
             className={cn(
-              'w-[3px] flex-none rounded-full bg-gradient-to-t from-ink/25 via-graphite/60 to-ink',
+              'w-[3px] flex-none rounded-full bg-gradient-to-t from-[#fde5b7]/25 via-[#fde5b7]/60 to-[#fde5b7]',
               playing && 'eq-bar',
               barClassName
             )}

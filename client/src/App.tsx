@@ -5,7 +5,6 @@ import { RoomEntryPage } from './pages/RoomEntryPage.js';
 import { MusicRoomPage } from './pages/MusicRoomPage.js';
 import { Toasts } from './components/Toasts.js';
 import { Brand } from './components/Brand.js';
-import { AuroraBackground } from './components/AuroraBackground.js';
 import { spotify } from './services/spotify.js';
 import type { ToastMessage } from './types.js';
 
@@ -57,7 +56,6 @@ export function App() {
     room,
     currentUser,
     connectionIssue,
-    connected,
     createRoom,
     joinRoom,
     leaveRoom,
@@ -110,8 +108,6 @@ export function App() {
         <MusicRoomPage
           room={room}
           currentUser={currentUser}
-          phase={phase}
-          connected={connected}
           onLeave={leaveRoom}
           onEndRoom={endRoom}
           notify={notify}
@@ -122,8 +118,6 @@ export function App() {
         <RoomEntryPage
           onCreate={createRoom}
           onJoin={joinRoom}
-          phase={phase}
-          connected={connected}
           initialUsername={savedUsername}
           initialCode={routeCode ?? undefined}
         />
@@ -136,44 +130,27 @@ export function App() {
 
 function BootScreen({ phase, connectionIssue }: { phase: string; connectionIssue: boolean }) {
   const message = connectionIssue
-    ? 'Waiting for the live server…'
+    ? 'Connecting to room…'
     : phase === 'reconnecting'
       ? 'Restoring your seat in the room…'
       : 'Opening your room…';
 
   return (
-    <div className="relative grid min-h-screen place-items-center overflow-hidden px-6">
-      <AuroraBackground />
+    <div className="relative grid min-h-screen place-items-center overflow-hidden px-6 bg-[#171719] text-[#fde5b7]">
       <div className="animate-rise flex w-full max-w-sm flex-col items-center text-center">
         <Brand size="lg" />
-        <div className="panel mt-8 w-full rounded-3xl p-7">
-          <div
-            className={`mx-auto grid h-14 w-14 place-items-center rounded-2xl border ${
-              connectionIssue ? 'border-rust/25 bg-rust/5' : 'border-sand bg-linen'
-            }`}
-          >
+        <div className="panel mt-8 w-full rounded-[32px] p-8 border border-white/5 bg-[#262629]">
+          <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl border border-white/10 bg-[#1c1c1f]">
             {connectionIssue ? (
-              <WifiOff className="h-6 w-6 text-rust" />
+              <WifiOff className="h-6 w-6 text-red-400" />
             ) : (
-              <Loader2 className="h-6 w-6 animate-spin text-slate" />
+              <Loader2 className="h-6 w-6 animate-spin text-[#fde5b7]" />
             )}
           </div>
-          <p className="font-display mt-4 text-base font-semibold text-ink">{message}</p>
-          <p className="mt-1.5 text-xs leading-relaxed text-taupe">
-            Server-authoritative playback is being re-aligned to your clock. This usually takes a
-            second.
+          <p className="mt-4 text-base font-bold text-[#fde5b7]">{message}</p>
+          <p className="mt-1.5 text-xs leading-relaxed text-[#a8a29e]">
+            Synchronizing room audio clock for your device.
           </p>
-          <div className="mt-5 flex items-center justify-center gap-1.5">
-            <span className="animate-pulse-soft h-1 w-1 rounded-full bg-taupe" />
-            <span
-              className="animate-pulse-soft h-1 w-1 rounded-full bg-clay"
-              style={{ animationDelay: '180ms' }}
-            />
-            <span
-              className="animate-pulse-soft h-1 w-1 rounded-full bg-sand"
-              style={{ animationDelay: '360ms' }}
-            />
-          </div>
         </div>
       </div>
     </div>

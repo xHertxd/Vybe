@@ -1,14 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { Pencil, Check, AlertCircle, ArrowRight, Shuffle } from 'lucide-react';
 import { Footer } from '../components/Footer.js';
-import type { RoomPhase } from '../hooks/useRoomSession.js';
 
 interface RoomEntryPageProps {
   onCreate: (username: string) => void;
   onJoin: (roomCode: string, username: string) => void;
-  phase: RoomPhase;
-  connected: boolean;
-  initialUsername: string;
+  initialUsername?: string;
   initialCode?: string;
 }
 
@@ -53,11 +50,10 @@ const USERNAME_RE = /^[A-Za-z]{2,20}$/;
 export function RoomEntryPage({
   onCreate,
   onJoin,
-  phase,
   initialUsername,
   initialCode,
 }: RoomEntryPageProps) {
-  // Automatically generate random alphabetic name on load
+  // Automatically generate random alphabetic name on initial load
   const [username, setUsername] = useState<string>(() => {
     return initialUsername && USERNAME_RE.test(initialUsername)
       ? initialUsername
@@ -75,7 +71,6 @@ export function RoomEntryPage({
   const [error, setError] = useState<string | null>(null);
 
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
-  const busy = phase === 'connecting';
 
   useEffect(() => {
     if (initialCode && /^\d{6}$/.test(initialCode)) {
@@ -86,7 +81,7 @@ export function RoomEntryPage({
   const handleSaveUsername = () => {
     const clean = tempUsername.trim();
     if (!USERNAME_RE.test(clean)) {
-      setError('Username must be 2–20 alphabetic letters only (A–Z, a–z).');
+      setError('Username must be 2–20 letters only (A–Z).');
       return;
     }
     setUsername(clean);
@@ -173,29 +168,23 @@ export function RoomEntryPage({
   };
 
   return (
-    <div className="relative min-h-screen w-full bg-[#171719] overflow-hidden text-[#fde5b7] flex flex-col items-center justify-center">
-      {/* Top Header Banner matching user design */}
+    <div className="relative min-h-screen w-full bg-[#171719] text-[#fde5b7] flex flex-col items-center justify-center overflow-hidden select-none">
+      {/* Top Header Banner matching exact user design */}
       <div className="absolute top-0 left-0 z-20">
-        <div className="bg-[#fde5b7] text-black px-10 sm:px-14 py-4 sm:py-5 rounded-br-[40px] sm:rounded-br-[56px] flex items-center shadow-lg">
-          <span className="font-brand font-black text-4xl sm:text-5xl md:text-6xl tracking-tighter select-none">
+        <div className="bg-[#fde5b7] text-black px-10 sm:px-14 py-4 sm:py-5 rounded-br-[40px] sm:rounded-br-[48px] flex items-center shadow-lg">
+          <span className="font-brand font-black text-4xl sm:text-5xl md:text-6xl tracking-tight select-none">
             VYBE
           </span>
         </div>
       </div>
 
-      {/* Subtle Live Status Indicator */}
-      <div className="absolute top-0 right-0 z-20 p-5 sm:p-7 flex items-center gap-2">
-        <span className="w-2 h-2 rounded-full bg-[#86efac]" />
-        <span className="text-xs font-mono text-[#a8a29e]">Live</span>
-      </div>
-
-      {/* Center Container - DEAD CENTER of Viewport */}
-      <div className="w-full max-w-lg sm:max-w-xl px-4 py-8 z-10 flex flex-col items-center my-auto">
-        {/* The Card from user design */}
+      {/* Main Center Container - DEAD CENTER of Viewport */}
+      <div className="w-full max-w-[460px] sm:max-w-[500px] px-5 py-8 z-10 flex flex-col items-center my-auto">
+        {/* The Charcoal Card from user design */}
         <div className="w-full bg-[#262629] rounded-[36px] sm:rounded-[44px] p-8 sm:p-12 shadow-2xl flex flex-col items-center border border-white/5">
           {/* 6 Digit Input Boxes */}
           <div
-            className="flex items-center justify-center gap-2.5 sm:gap-3.5 mb-8 w-full max-w-md"
+            className="flex items-center justify-center gap-2.5 sm:gap-3.5 mb-7 w-full"
             onPaste={handlePaste}
           >
             {digits.map((digit, idx) => (
@@ -211,7 +200,7 @@ export function RoomEntryPage({
                 value={digit}
                 onChange={(e) => handleDigitChange(idx, e.target.value)}
                 onKeyDown={(e) => handleKeyDown(idx, e)}
-                className="w-11 h-14 sm:w-14 sm:h-16 md:w-16 md:h-18 bg-[#fde5b7] text-black font-brand font-black text-2xl sm:text-3xl md:text-4xl text-center rounded-xl sm:rounded-2xl focus:outline-none focus:ring-4 focus:ring-[#fde5b7]/50 shadow-md transition-all caret-transparent select-none cursor-text"
+                className="w-11 h-14 sm:w-14 sm:h-16 md:w-15 md:h-17 bg-[#fde5b7] text-black font-brand font-black text-2xl sm:text-3xl md:text-4xl text-center rounded-xl sm:rounded-2xl focus:outline-none focus:ring-4 focus:ring-[#fde5b7]/50 shadow-md transition-all caret-transparent select-none cursor-text"
               />
             ))}
           </div>
@@ -220,7 +209,7 @@ export function RoomEntryPage({
           <div className="flex items-center justify-center mb-8 text-[#fde5b7] text-sm sm:text-base font-medium">
             <span className="opacity-80 mr-1.5">You will join as</span>
             {isEditingUsername ? (
-              <div className="flex items-center gap-1.5 bg-black/40 px-2.5 py-1 rounded-lg border border-[#fde5b7]/40">
+              <div className="flex items-center gap-1.5 bg-black/40 px-3 py-1 rounded-lg border border-[#fde5b7]/40">
                 <input
                   type="text"
                   autoFocus
@@ -254,7 +243,7 @@ export function RoomEntryPage({
                   className="group flex items-center gap-1.5 cursor-pointer"
                   title="Click to edit username"
                 >
-                  <span className="underline decoration-[#fde5b7]/50 underline-offset-4 font-semibold text-[#fde5b7] group-hover:text-white transition-colors">
+                  <span className="underline decoration-[#fde5b7]/60 underline-offset-4 font-semibold text-[#fde5b7] group-hover:text-white transition-colors">
                     {username}
                   </span>
                   <Pencil className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#fde5b7] opacity-80 group-hover:opacity-100 group-hover:scale-110 transition-all" />
@@ -263,7 +252,7 @@ export function RoomEntryPage({
                   type="button"
                   onClick={handleShuffleUsername}
                   className="p-1 text-[#a8a29e] hover:text-[#fde5b7] transition-colors"
-                  title="Generate another random name"
+                  title="Roll another random name"
                 >
                   <Shuffle className="w-3.5 h-3.5" />
                 </button>
@@ -285,17 +274,15 @@ export function RoomEntryPage({
               <button
                 type="button"
                 onClick={handleJoin}
-                disabled={busy}
-                className="w-full max-w-xs py-3.5 px-8 rounded-full bg-[#1c1c1f] hover:bg-[#232327] active:scale-95 text-[#fde5b7] font-bebas text-2xl tracking-widest transition-all shadow-xl border border-white/5 flex items-center justify-center gap-2 hover:border-[#fde5b7]/30 disabled:opacity-50"
+                className="w-full py-4 px-8 rounded-full bg-[#1c1c1f] hover:bg-[#252528] active:scale-[0.98] text-[#fde5b7] font-bebas text-2xl sm:text-3xl tracking-widest transition-all shadow-xl border border-white/5 flex items-center justify-center gap-2 hover:border-[#fde5b7]/30"
               >
-                <span>{busy ? 'CONNECTING...' : 'JOIN ROOM'}</span>
-                {!busy && <ArrowRight className="w-5 h-5 text-[#fde5b7]" />}
+                <span>JOIN ROOM</span>
+                <ArrowRight className="w-5 h-5 text-[#fde5b7]" />
               </button>
 
               <button
                 type="button"
                 onClick={handleCreate}
-                disabled={busy}
                 className="text-xs text-[#a8a29e] hover:text-[#fde5b7] underline underline-offset-4 font-medium transition-colors"
               >
                 or create a new room instead
@@ -305,17 +292,16 @@ export function RoomEntryPage({
             <button
               type="button"
               onClick={handleCreate}
-              disabled={busy}
-              className="w-full max-w-xs py-3.5 px-8 rounded-full bg-[#1c1c1f] hover:bg-[#232327] active:scale-95 text-[#fde5b7] font-bebas text-2xl tracking-widest transition-all shadow-xl border border-white/5 flex items-center justify-center gap-2 hover:border-[#fde5b7]/30 disabled:opacity-50"
+              className="w-full py-4 px-8 rounded-full bg-[#1c1c1f] hover:bg-[#252528] active:scale-[0.98] text-[#fde5b7] font-bebas text-2xl sm:text-3xl tracking-widest transition-all shadow-xl border border-white/5 flex items-center justify-center gap-2 hover:border-[#fde5b7]/30"
             >
-              <span>{busy ? 'CONNECTING...' : 'CREATE NEW ROOM'}</span>
+              <span>CREATE NEW ROOM</span>
             </button>
           )}
         </div>
       </div>
 
       {/* Footer */}
-      <div className="absolute bottom-0 left-0 right-0 w-full z-10">
+      <div className="absolute bottom-6 left-0 right-0 w-full z-10 text-center">
         <Footer />
       </div>
     </div>

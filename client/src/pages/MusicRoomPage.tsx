@@ -6,18 +6,14 @@ import {
   LogOut,
   Power,
   Share2,
-  ShieldCheck,
-  Wifi,
-  WifiOff,
+  Users,
 } from 'lucide-react';
 import type { RoomState, RoomUser } from '../types.js';
-import type { RoomPhase } from '../hooks/useRoomSession.js';
 import { useMediaPlayer } from '../hooks/useMediaPlayer.js';
 import { clockSync } from '../services/clockSync.js';
 import { socket } from '../services/socket.js';
 import { spotify } from '../services/spotify.js';
 import { Brand } from '../components/Brand.js';
-import { AuroraBackground } from '../components/AuroraBackground.js';
 import { Footer } from '../components/Footer.js';
 import { NowPlayingCard } from '../components/room/NowPlayingCard.js';
 import { InlineSearch } from '../components/room/InlineSearch.js';
@@ -30,8 +26,6 @@ import { initials } from '../lib/format.js';
 interface MusicRoomPageProps {
   room: RoomState;
   currentUser: RoomUser;
-  phase: RoomPhase;
-  connected: boolean;
   onLeave: () => void;
   onEndRoom: () => void;
   notify: (title: string, description?: string, tone?: 'info' | 'success' | 'error') => void;
@@ -44,8 +38,6 @@ const VOLUME_KEY = 'vybe_volume';
 export function MusicRoomPage({
   room,
   currentUser,
-  phase,
-  connected,
   onLeave,
   onEndRoom,
   notify,
@@ -64,7 +56,7 @@ export function MusicRoomPage({
   });
   const [clock, setClock] = useState(() => clockSync.getMetrics());
   const spotifyVersion = 0;
-  const [spotifyProfile, setSpotifyProfile] = useState<{ name: string; premium: boolean } | null>(null);
+  const [, setSpotifyProfile] = useState<{ name: string; premium: boolean } | null>(null);
 
   const spotifyConnected = spotify.isConnected();
   const track = room.playback.currentTrack;
@@ -112,11 +104,9 @@ export function MusicRoomPage({
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [spotifyConnected, spotifyVersion]);
+  }, [spotifyConnected, spotifyVersion, notify]);
 
   const onlineUsers = useMemo(() => room.users.filter((user) => user.isOnline), [room.users]);
-  const adminUser = room.users.find((user) => user.isAdmin);
   const latency = Math.max(1, Math.round(clock.rtt / 2));
 
   const copyCode = async () => {
@@ -140,7 +130,7 @@ export function MusicRoomPage({
         notify('Invite link copied', 'Send it to anyone you want in the room.', 'success');
       }
     } catch {
-      // Sharing was cancelled or unsupported; no need to surface an error.
+      // Sharing was cancelled
     }
   };
 
@@ -156,93 +146,66 @@ export function MusicRoomPage({
       );
   };
 
-  const reconnectBanner = !connected || phase === 'reconnecting';
-
   return (
-    <div className="relative flex min-h-screen flex-col">
-      <AuroraBackground dense />
-
+    <div className="relative flex min-h-screen flex-col bg-[#171719] text-[#fde5b7] select-none">
       {/* ------------------------------------------------------------- header -- */}
-      <header className="sticky top-0 z-40 border-b border-sand/80 bg-paper/90 backdrop-blur-xl">
-        <div className="mx-auto flex h-16 w-full max-w-[1480px] items-center justify-between gap-3 px-3 sm:px-5 lg:px-8">
+      <header className="sticky top-0 z-40 border-b border-white/[0.08] bg-[#171719]/95 backdrop-blur-md">
+        <div className="mx-auto flex h-16 w-full max-w-7xl items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
           <div className="flex min-w-0 items-center gap-3">
             <Brand size="sm" />
-            <div className="hidden h-6 w-px bg-sand sm:block" />
+            <div className="hidden h-5 w-px bg-white/10 sm:block" />
             <button
               type="button"
               onClick={() => void copyCode()}
-              className="group flex items-center gap-2 rounded-lg border border-sand bg-cream px-2.5 py-1.5 transition-colors hover:bg-linen"
-              title="Copy room code"
+              className="group flex items-center gap-2 rounded-xl border border-white/10 bg-[#262629] px-3 py-1.5 transition-all hover:border-[#fde5b7]/40 hover:bg-[#2c2c30]"
+              title="Click to copy room code"
             >
-              <span className="text-[9px] font-medium uppercase tracking-[0.18em] text-taupe">
+              <span className="text-[10px] font-medium uppercase tracking-wider text-[#a8a29e]">
                 Room
               </span>
-              <span className="font-mono text-[13px] font-semibold tracking-[0.16em] text-ink">
+              <span className="font-mono text-sm font-bold tracking-wider text-[#fde5b7]">
                 {room.roomCode}
               </span>
               {copiedCode ? (
-                <Check className="h-3 w-3 text-forest" />
+                <Check className="h-3.5 w-3.5 text-[#86efac]" />
               ) : (
-                <Copy className="h-3 w-3 text-taupe group-hover:text-graphite" />
+                <Copy className="h-3.5 w-3.5 text-[#a8a29e] group-hover:text-white" />
               )}
             </button>
             <button
               type="button"
               onClick={() => void shareRoom()}
-              className="icon-btn hidden h-8 w-8 sm:inline-flex"
-              title="Share room"
-              aria-label="Share room"
+              className="hidden h-8 w-8 items-center justify-center rounded-xl border border-white/10 bg-[#262629] text-[#a8a29e] hover:text-[#fde5b7] hover:border-[#fde5b7]/30 transition-all sm:inline-flex"
+              title="Share room link"
             >
               <Share2 className="h-3.5 w-3.5" />
             </button>
           </div>
 
-          <div className="flex items-center gap-2">
-            <span
-              className={cn(
-                'hidden items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-medium sm:flex',
-                reconnectBanner
-                  ? 'border-rust/25 bg-rust/5 text-rust'
-                  : 'border-forest/25 bg-forest/5 text-forest'
-              )}
-            >
-              {reconnectBanner ? <WifiOff className="h-3 w-3" /> : <Wifi className="h-3 w-3" />}
-              {reconnectBanner ? 'Reconnecting' : `${latency}ms · synced`}
+          <div className="flex items-center gap-2.5">
+            <span className="hidden items-center gap-1.5 rounded-full border border-green-500/30 bg-green-500/10 px-3 py-1 text-[11px] font-medium text-[#86efac] sm:flex">
+              <span className="h-1.5 w-1.5 rounded-full bg-[#86efac] animate-pulse" />
+              <span>{latency ? `${latency}ms · Synced` : 'Synced'}</span>
             </span>
 
-            <div className="hidden items-center -space-x-2 md:flex">
-              {onlineUsers.slice(0, 4).map((user) => (
-                <div
-                  key={user.id}
-                  className={cn(
-                    'grid h-7 w-7 place-items-center rounded-full border-2 border-paper text-[9px] font-semibold',
-                    user.isAdmin ? 'bg-ink text-cream' : 'bg-linen text-graphite'
-                  )}
-                  title={user.username}
-                >
-                  {initials(user.username)}
-                </div>
-              ))}
-              {onlineUsers.length > 4 && (
-                <div className="grid h-7 w-7 place-items-center rounded-full border-2 border-paper bg-linen text-[9px] font-medium text-taupe">
-                  +{onlineUsers.length - 4}
-                </div>
-              )}
+            <div className="hidden items-center gap-1.5 text-xs text-[#a8a29e] sm:flex px-2 py-1 bg-[#262629] rounded-xl border border-white/5">
+              <Users className="h-3.5 w-3.5 text-[#fde5b7]" />
+              <span>{onlineUsers.length} {onlineUsers.length === 1 ? 'listener' : 'listeners'}</span>
             </div>
 
-            <div className="flex items-center gap-2 rounded-lg border border-sand bg-cream px-2 py-1">
-              <div className="grid h-6 w-6 place-items-center rounded-full bg-linen text-[9px] font-semibold text-graphite">
+            <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-[#262629] px-2.5 py-1.5">
+              <div className="grid h-6 w-6 place-items-center rounded-lg bg-[#fde5b7] text-[10px] font-black text-black">
                 {initials(currentUser.username)}
               </div>
               <div className="hidden pr-1 sm:block">
-                <p className="max-w-[100px] truncate text-[11px] font-medium leading-tight text-ink">
+                <p className="max-w-[110px] truncate text-xs font-semibold leading-tight text-[#fde5b7]">
                   {currentUser.username}
                 </p>
-                <p className="flex items-center gap-0.5 text-[8.5px] leading-tight text-taupe">
+                <p className="flex items-center gap-1 text-[9px] font-medium text-[#a8a29e]">
                   {isAdmin ? (
                     <>
-                      <Crown className="h-2.5 w-2.5" />
-                      Admin
+                      <Crown className="h-2.5 w-2.5 text-[#fde5b7]" />
+                      Host
                     </>
                   ) : (
                     'Listener'
@@ -255,9 +218,8 @@ export function MusicRoomPage({
               <button
                 type="button"
                 onClick={() => setConfirm('end')}
-                className="icon-btn h-8 w-8 hover:bg-rust/10 hover:text-rust"
-                title="End room"
-                aria-label="End room"
+                className="h-8 w-8 items-center justify-center rounded-xl border border-red-500/20 bg-red-500/10 text-red-300 hover:bg-red-500/20 transition-all flex"
+                title="End room for all"
               >
                 <Power className="h-3.5 w-3.5" />
               </button>
@@ -266,7 +228,7 @@ export function MusicRoomPage({
             <button
               type="button"
               onClick={onLeave}
-              className="btn btn-ghost h-8 rounded-lg px-2.5 text-[11px]"
+              className="flex items-center gap-1.5 h-8 rounded-xl border border-white/10 bg-[#262629] px-3 text-xs text-[#a8a29e] hover:text-[#fde5b7] hover:border-[#fde5b7]/30 transition-all"
               title="Leave room"
             >
               <LogOut className="h-3.5 w-3.5" />
@@ -274,26 +236,22 @@ export function MusicRoomPage({
             </button>
           </div>
         </div>
-
-        {reconnectBanner && (
-          <div className="border-t border-rust/15 bg-rust/5 px-4 py-1.5 text-center text-[10.5px] text-rust">
-            Connection lost — reconnecting. Your seat is held and playback will re-align
-            automatically.
-          </div>
-        )}
       </header>
 
       {/* --------------------------------------------------------------- main -- */}
-      <main className="mx-auto w-full max-w-[1480px] flex-1 px-3 pb-6 pt-4 sm:px-5 sm:pt-5 lg:px-8">
+      <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6 lg:px-8">
         <div
           className={cn(
-            'grid items-start gap-4 lg:gap-5',
-            !theater && 'lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_380px]'
+            'grid items-start gap-6',
+            !theater && 'lg:grid-cols-[minmax(0,1fr)_360px] xl:grid-cols-[minmax(0,1fr)_400px]'
           )}
         >
-          <div className="min-w-0 space-y-4">
+          {/* Main Area: Search + Now Playing Player */}
+          <div className="min-w-0 space-y-6">
+            {/* Inline Music Search & Library */}
             <InlineSearch notify={notify} />
 
+            {/* Now Playing Showcase Card */}
             <NowPlayingCard
               room={room}
               currentUser={currentUser}
@@ -310,124 +268,57 @@ export function MusicRoomPage({
               onConnectSpotify={connectSpotify}
               onOpenAdd={() => setAddOpen(true)}
             />
-
-            <div className="panel flex flex-wrap items-center justify-between gap-3 rounded-2xl px-4 py-3">
-              <div className="flex items-center gap-2.5">
-                <div className="grid h-8 w-8 place-items-center rounded-lg bg-linen">
-                  <ShieldCheck className="h-4 w-4 text-graphite" />
-                </div>
-                <div>
-                  <p className="text-[11px] font-medium text-graphite">
-                    {isAdmin
-                      ? 'You are running this room'
-                      : `${adminUser?.username || 'The admin'} is running this room`}
-                  </p>
-                  <p className="text-[10px] text-taupe">
-                    {isAdmin
-                      ? 'Playback, queue and settings are locked to you.'
-                      : 'Only the admin can change playback. Your volume stays local.'}
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2">
-                {spotify.configured && (
-                  <button
-                    type="button"
-                    onClick={connectSpotify}
-                    className={cn(
-                      'btn h-8 rounded-lg px-3 text-[11px]',
-                      spotifyConnected ? 'btn-ghost' : 'btn-ghost'
-                    )}
-                    title="Connect Spotify Premium for Spotify links"
-                  >
-                    <span
-                      className={cn(
-                        'h-1.5 w-1.5 rounded-full',
-                        spotifyConnected ? 'bg-forest' : 'bg-clay'
-                      )}
-                    />
-                    {spotifyConnected
-                      ? spotifyProfile?.name
-                        ? `Spotify · ${spotifyProfile.name}`
-                        : 'Spotify connected'
-                      : 'Connect Spotify'}
-                  </button>
-                )}
-                {isAdmin && (
-                  <button
-                    type="button"
-                    onClick={() => setAddOpen(true)}
-                    className="btn btn-primary h-8 rounded-lg px-3 text-[11px]"
-                  >
-                    Add media
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {theater && (
-              <div className="lg:hidden">
-                <SidePanel
-                  room={room}
-                  currentUser={currentUser}
-                  isAdmin={isAdmin}
-                  onOpenAdd={() => setAddOpen(true)}
-                  onRequestClear={() => setConfirm('clear')}
-                  notify={notify}
-                />
-              </div>
-            )}
           </div>
 
+          {/* Side Panel: Up Next Queue & Listeners */}
           {!theater && (
-            <div className="lg:sticky lg:top-[88px] lg:h-[calc(100vh-104px)]">
-              <SidePanel
-                room={room}
-                currentUser={currentUser}
-                isAdmin={isAdmin}
-                onOpenAdd={() => setAddOpen(true)}
-                onRequestClear={() => setConfirm('clear')}
-                notify={notify}
-              />
-            </div>
+            <SidePanel
+              room={room}
+              currentUser={currentUser}
+              isAdmin={isAdmin}
+              onOpenAdd={() => setAddOpen(true)}
+              onRequestClear={() => setConfirm('clear')}
+              notify={notify}
+            />
           )}
         </div>
-
-        <p className="mt-6 flex items-center justify-center gap-1.5 text-center text-[10px] text-taupe">
-          <span className="h-1 w-1 rounded-full bg-clay" />
-          Server-authoritative clock · drift corrected continuously · audio stays on your device
-        </p>
       </main>
 
+      {/* Footer */}
       <Footer compact />
 
-      <AddMediaModal open={addOpen} onClose={() => setAddOpen(false)} notify={notify} />
+      {/* Modals */}
+      <AddMediaModal
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        notify={notify}
+      />
 
       <ConfirmDialog
         open={confirm === 'clear'}
         title="Clear the queue?"
-        description="This removes every track and stops playback for everyone in the room."
+        description="All upcoming tracks will be removed from the room."
         confirmLabel="Clear queue"
         danger
-        onClose={() => setConfirm(null)}
         onConfirm={() => {
           socket.emit('queue:clear', { roomCode: room.roomCode });
-          notify('Queue cleared', 'The room is ready for something new.', 'info');
+          notify('Queue cleared', 'All tracks removed from the room.', 'info');
+          setConfirm(null);
         }}
+        onClose={() => setConfirm(null)}
       />
 
       <ConfirmDialog
         open={confirm === 'end'}
-        title="End this room?"
-        description="Everyone will be disconnected and the room code will stop working immediately."
+        title="End this session?"
+        description="The room will be closed and every listener will be disconnected."
         confirmLabel="End room"
         danger
-        onClose={() => setConfirm(null)}
         onConfirm={() => {
           onEndRoom();
-          notify('Room ended', 'Everyone has been disconnected.', 'info');
+          setConfirm(null);
         }}
+        onClose={() => setConfirm(null)}
       />
     </div>
   );

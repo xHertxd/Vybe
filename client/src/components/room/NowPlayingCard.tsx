@@ -375,7 +375,7 @@ export function NowPlayingCard({
       {/* ------------------------------------------------------------- track -- */}
       <div className="mt-4 flex items-start justify-between gap-4 px-1">
         <div className="min-w-0">
-          <h2 className="font-display line-clamp-1 text-xl font-semibold tracking-[-0.015em] text-ink sm:text-2xl">
+          <h2 className="font-display line-clamp-1 text-xl font-bold tracking-tight text-white sm:text-2xl">
             {track?.title || 'Nothing playing yet'}
           </h2>
           <p className="mt-1 line-clamp-1 text-[12.5px] text-taupe">
@@ -448,7 +448,7 @@ export function NowPlayingCard({
             disabled={!isAdmin}
             className={cn(
               'icon-btn relative',
-              room.settings.isShuffle && 'bg-linen text-ink'
+              room.settings.isShuffle && 'bg-white/10 text-[#fde5b7]'
             )}
             title="Shuffle (admin)"
             aria-label="Toggle shuffle"
@@ -475,16 +475,16 @@ export function NowPlayingCard({
           onClick={() => emit(isPlaying ? 'playback:pause' : 'playback:play')}
           disabled={!isAdmin || !track}
           className={cn(
-            'grid h-14 w-14 place-items-center rounded-full bg-ink text-cream transition-all',
-            'hover:bg-graphite disabled:opacity-40'
+            'grid h-14 w-14 place-items-center rounded-full bg-[#fde5b7] text-black transition-all shadow-lg',
+            'hover:bg-[#fee8c8] hover:scale-105 active:scale-95 disabled:opacity-40 disabled:hover:scale-100 cursor-pointer'
           )}
           title={isAdmin ? (isPlaying ? 'Pause' : 'Play') : 'Only the admin can control playback'}
           aria-label={isPlaying ? 'Pause' : 'Play'}
         >
           {isPlaying ? (
-            <Pause className="h-5 w-5 fill-current" />
+            <Pause className="h-6 w-6 fill-black text-black" />
           ) : (
-            <Play className="ml-0.5 h-5 w-5 fill-current" />
+            <Play className="ml-0.5 h-6 w-6 fill-black text-black" />
           )}
         </button>
 
@@ -505,7 +505,7 @@ export function NowPlayingCard({
             disabled={!isAdmin}
             className={cn(
               'icon-btn relative',
-              room.settings.repeatMode !== 'off' && 'bg-linen text-ink'
+              room.settings.repeatMode !== 'off' && 'bg-white/10 text-[#fde5b7]'
             )}
             title={`Repeat: ${room.settings.repeatMode} (admin)`}
             aria-label="Cycle repeat mode"
