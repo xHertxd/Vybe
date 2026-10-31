@@ -119,11 +119,11 @@ export function NowPlayingCard({
 
     // 2. Control room playback if user canControl, or confirm local sync
     if (canControl) {
-      // If room is already playing, don't send playback:play (would cause re-sync)
-      // Just activate local player to catch up
       if (isPlaying) {
-        notify?.('Locked in Sync', 'Your device is now synced to room playback.', 'success');
+        // Room is playing -> user wants to PAUSE
+        emit('playback:pause');
       } else {
+        // Room is paused -> user wants to PLAY
         emit('playback:play');
       }
     } else {
