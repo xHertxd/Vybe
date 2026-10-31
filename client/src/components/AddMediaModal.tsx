@@ -138,8 +138,9 @@ export function AddMediaModal({ open, onClose, notify }: AddMediaModalProps) {
 
   const handleFileSelect = async (file: File) => {
     if (!file) return;
-    if (file.size > 50 * 1024 * 1024) {
-      notify('File too large', 'Please select an audio file under 50 MB.', 'error');
+    const maxSize = 30 * 1024 * 1024; // 30MB to match server config
+    if (file.size > maxSize) {
+      notify('File too large', 'Please select an audio file under 30 MB.', 'error');
       return;
     }
 
@@ -496,7 +497,7 @@ export function AddMediaModal({ open, onClose, notify }: AddMediaModalProps) {
                 ) : (
                   <>
                     <p className="text-sm font-semibold text-white">Click or drag audio file here</p>
-                    <p className="text-xs text-[#a8a29e] mt-1">Supports MP3, WAV, AAC, M4A up to 50MB</p>
+                    <p className="text-xs text-[#a8a29e] mt-1">Supports MP3, WAV, AAC, M4A up to 30MB</p>
                   </>
                 )}
               </div>
