@@ -75,7 +75,6 @@
     color: inherit;
   }
 
-  /* Custom scrollbar */
   ::-webkit-scrollbar {
     width: 6px;
     height: 6px;
@@ -92,8 +91,6 @@
   }
 }
 
-/* ---------------------------------------------------------------- typography -- */
-
 .font-brand {
   font-family: 'Archivo Black', 'Syne', sans-serif;
   letter-spacing: -0.04em;
@@ -109,8 +106,6 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* ---------------------------------------------------------------- panels -- */
-
 .panel {
   background-color: #262629;
   border: 1px solid rgba(255, 255, 255, 0.07);
@@ -121,8 +116,6 @@
   background-color: #1f1f22;
   border: 1px solid rgba(255, 255, 255, 0.05);
 }
-
-/* ---------------------------------------------------------------- buttons -- */
 
 .btn {
   display: inline-flex;
@@ -208,8 +201,6 @@
   cursor: not-allowed;
 }
 
-/* ---------------------------------------------------------------- chips -- */
-
 .chip {
   display: inline-flex;
   align-items: center;
@@ -235,8 +226,6 @@
   background-color: rgba(253, 229, 183, 0.1);
   color: #fde5b7;
 }
-
-/* ---------------------------------------------------------------- ranges & sliders -- */
 
 input[type="range"].slider {
   -webkit-appearance: none;
@@ -295,8 +284,6 @@ input[type="range"].slider::-moz-range-thumb {
   background: #fde5b7;
   box-shadow: 0 0 10px rgba(253, 229, 183, 0.6);
 }
-
-/* ---------------------------------------------------------------- animations -- */
 
 @keyframes spin-slow {
   to { transform: rotate(360deg); }
