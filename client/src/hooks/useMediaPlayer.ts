@@ -137,19 +137,45 @@ export function useMediaPlayer({
     const initialTarget = positionAt(playbackRef.current, initialNow);
     const initialVolume = (isPreviousPlaying && fadeDurationSec > 0) ? 0 : volume;
 
+    const applyPlaybackOnReady = (adapter: PlayerAdapter, initialSeek: number) => {
+      if (cancelled) return;
+      setPhase('ready');
+      setAdapterTick((tick) => tick + 1);
+      if (isPreviousPlaying && fadeDurationSec > 0 && adapter.fade) {
+        adapter.fade(0, volume, Math.min(fadeDurationSec * 1000, 2500));
+      }
+      // Immediately apply current authoritative playback state
+      const now = clockSync.getServerNow();
+      const target = positionAt(playbackRef.current, now);
+      const wait = waitUntilStart(playbackRef.current, now);
+      const isPlaying = playbackRef.current.status === 'playing';
+      if (initialSeek > 0 || target > 0) {
+        adapter.seek(target > 0 ? target : initialSeek);
+      }
+      if (isPlaying) {
+        adapter.setRate(1);
+        if (wait > 40) {
+          adapter.pause();
+          startTimer.current = setTimeout(() => {
+            adapterRef.current?.setRate(1);
+            void Promise.resolve(adapterRef.current?.play()).catch(() => {
+              if (!audioUnlocker.isUnlocked()) setPhase('needs-interaction');
+            });
+          }, wait);
+        } else {
+          void Promise.resolve(adapter.play()).catch(() => {
+            if (!audioUnlocker.isUnlocked()) setPhase('needs-interaction');
+          });
+        }
+      }
+    };
+
     if (track.provider === 'audio') {
       const src = audioSource(track);
       const adapter = new HowlerAudioAdapter(
         src,
         initialVolume,
-        () => {
-          if (cancelled) return;
-          setPhase('ready');
-          setAdapterTick((tick) => tick + 1);
-          if (isPreviousPlaying && fadeDurationSec > 0 && adapter.fade) {
-            adapter.fade(0, volume, Math.min(fadeDurationSec * 1000, 2500));
-          }
-        },
+        () => applyPlaybackOnReady(adapter, initialTarget),
         () => {
           if (endedForTrack.current !== track.id) {
             endedForTrack.current = track.id;
@@ -163,11 +189,8 @@ export function useMediaPlayer({
           setPhase('error');
         }
       );
-      if (initialTarget > 0) {
-        adapter.seek(initialTarget);
-      }
       adapterRef.current = adapter;
-      if (adapter.isReady()) setPhase('ready');
+      if (adapter.isReady()) applyPlaybackOnReady(adapter, initialTarget);
       setAdapterTick((tick) => tick + 1);
     }
 
@@ -180,8 +203,7 @@ export function useMediaPlayer({
         track.mediaId,
         initialTarget,
         () => {
-          setPhase('ready');
-          setAdapterTick((tick) => tick + 1);
+          applyPlaybackOnReady(adapterRef.current!, initialTarget);
         },
         () => {
           if (endedForTrack.current !== track.id) {
@@ -198,8 +220,7 @@ export function useMediaPlayer({
           }
           adapter.setVolume(volume);
           adapterRef.current = adapter;
-          setPhase('ready');
-          setAdapterTick((tick) => tick + 1);
+          applyPlaybackOnReady(adapter, initialTarget);
         })
         .catch((reason: unknown) => {
           if (cancelled) return;
@@ -221,8 +242,7 @@ export function useMediaPlayer({
         .then(() => {
           if (cancelled) return;
           adapter.setReady(true);
-          setPhase('ready');
-          setAdapterTick((tick) => tick + 1);
+          applyPlaybackOnReady(adapter, initialTarget);
         })
         .catch((reason: unknown) => {
           if (cancelled) return;

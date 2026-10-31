@@ -25,8 +25,8 @@ export const config = {
 
   /** How long a dropped participant keeps their seat and username (30 minutes to prevent accidental room drops). */
   disconnectGraceMs: intFromEnv('DISCONNECT_GRACE_MS', 30 * 60 * 1000),
-  /** How far in the future play commands are scheduled, so every client can buffer. */
-  scheduleDelayMs: intFromEnv('SYNC_SCHEDULE_DELAY_MS', 600),
+  /** How far in the future play commands are scheduled (0 = instant). */
+  scheduleDelayMs: intFromEnv('SYNC_SCHEDULE_DELAY_MS', 0),
   /** Authoritative resync snapshot interval. */
   heartbeatIntervalMs: intFromEnv('SYNC_HEARTBEAT_MS', 5_000),
   roomIdleTimeoutMs: intFromEnv('ROOM_IDLE_TIMEOUT_MS', 12 * 60 * 60 * 1000),
