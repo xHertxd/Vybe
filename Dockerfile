@@ -3,17 +3,19 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Copy server package manifests first (for layer caching)
-COPY server/package*.json ./server/
+# Copy server package manifests directly to workdir (avoids workspace detection)
+COPY server/package.json ./
+COPY server/package-lock.json ./
 
-# Install server dependencies (without workspaces interference)
-RUN cd server && npm ci
+# Install server dependencies
+RUN npm ci
 
-# Copy server source code and config
-COPY server/ ./server/
+# Copy server source code
+COPY server/src ./src
+COPY server/tsconfig.json ./
 
-# Build TypeScript to JavaScript
-RUN cd server && npm run build
+# Build TypeScript
+RUN npm run build
 
 # --- Production Runner Stage ---
 FROM node:20-alpine AS runner
@@ -24,13 +26,14 @@ ENV NODE_ENV=production
 ENV PORT=10000
 
 # Copy server package manifests
-COPY server/package*.json ./
+COPY server/package.json ./
+COPY server/package-lock.json ./
 
-# Install production dependencies only (in server directory)
+# Install production dependencies only
 RUN npm ci --omit=dev
 
 # Copy compiled files from builder stage
-COPY --from=builder /app/server/dist ./dist
+COPY --from=builder /app/dist ./dist
 
 # Create uploads directory
 RUN mkdir -p /app/uploads
