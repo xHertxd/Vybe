@@ -3,18 +3,17 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Copy server package manifests
+# Copy server package manifests first (for layer caching)
 COPY server/package*.json ./server/
-COPY package*.json ./
 
-# Install dependencies
-RUN npm --prefix server ci
+# Install server dependencies (without workspaces interference)
+RUN cd server && npm ci
 
 # Copy server source code and config
 COPY server/ ./server/
 
 # Build TypeScript to JavaScript
-RUN npm --prefix server run build
+RUN cd server && npm run build
 
 # --- Production Runner Stage ---
 FROM node:20-alpine AS runner
@@ -24,8 +23,10 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=10000
 
-# Install production dependencies only
+# Copy server package manifests
 COPY server/package*.json ./
+
+# Install production dependencies only (in server directory)
 RUN npm ci --omit=dev
 
 # Copy compiled files from builder stage
@@ -43,4 +44,3 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
 
 # Start server
 CMD ["node", "dist/index.js"]
-
