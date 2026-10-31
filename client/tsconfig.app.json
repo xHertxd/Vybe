@@ -20,7 +20,14 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "erasableSyntaxOnly": true,
-    "noFallthroughCasesInSwitch": true
+    "noFallthroughCasesInSwitch": true,
+
+    /* Path aliases */
+    "baseUrl": ".",
+    "paths": {
+      "@vybe/shared": ["../packages/shared/src"],
+      "@vybe/shared/*": ["../packages/shared/src/*"]
+    }
   },
-  "include": ["src"]
+  "include": ["src", "../packages/shared/src"]
 }

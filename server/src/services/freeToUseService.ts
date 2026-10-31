@@ -1,5 +1,4 @@
 import type { MediaItemInput } from '../types.js';
-import { config } from '../config.js';
 
 export interface FreeToUseRawTrack {
   id: string;
@@ -34,19 +33,8 @@ interface CacheEntry<T> {
 }
 
 export class FreeToUseService {
-  private readonly baseUrl = config.freeToUseApiUrl;
+  private readonly baseUrl = 'https://api.freetouse.com/v3';
   private readonly cache = new Map<string, CacheEntry<unknown>>();
-
-  private async fetchWithRetry(url: string, options: RequestInit = {}, retries = 2): Promise<Response> {
-    for (let i = 0; ; i++) {
-      try {
-        return await fetch(url, options);
-      } catch (err) {
-        if (i >= retries) throw err;
-        await new Promise((r) => setTimeout(r, 500 * (i + 1)));
-      }
-    }
-  }
 
   private getCached<T>(key: string): T | null {
     const entry = this.cache.get(key);
@@ -117,7 +105,7 @@ export class FreeToUseService {
 
     try {
       const url = `${this.baseUrl}/music/tracks/search?query=${encodeURIComponent(clean)}&limit=${limit}`;
-      const res = await this.fetchWithRetry(url, {
+      const res = await fetch(url, {
         headers: { Accept: 'application/json' },
         signal: AbortSignal.timeout(6000),
       });
@@ -148,7 +136,7 @@ export class FreeToUseService {
 
     try {
       const url = `${this.baseUrl}/music/tracks/all?order=plays&sort=desc&limit=${limit}`;
-      const res = await this.fetchWithRetry(url, {
+      const res = await fetch(url, {
         headers: { Accept: 'application/json' },
         signal: AbortSignal.timeout(6000),
       });
@@ -179,7 +167,7 @@ export class FreeToUseService {
 
     try {
       const url = `${this.baseUrl}/music/categories/all?limit=50`;
-      const res = await this.fetchWithRetry(url, {
+      const res = await fetch(url, {
         headers: { Accept: 'application/json' },
         signal: AbortSignal.timeout(6000),
       });
@@ -210,7 +198,7 @@ export class FreeToUseService {
 
     try {
       const url = `${this.baseUrl}/music/categories/${encodeURIComponent(cleanId)}/tracks?limit=${limit}`;
-      const res = await this.fetchWithRetry(url, {
+      const res = await fetch(url, {
         headers: { Accept: 'application/json' },
         signal: AbortSignal.timeout(6000),
       });
@@ -243,7 +231,7 @@ export class FreeToUseService {
     if (uuidMatch) {
       const trackId = uuidMatch[0];
       try {
-        const res = await this.fetchWithRetry(`${this.baseUrl}/music/tracks/${trackId}`, {
+        const res = await fetch(`${this.baseUrl}/music/tracks/${trackId}`, {
           signal: AbortSignal.timeout(5000),
         });
         if (res.ok) {
@@ -261,7 +249,7 @@ export class FreeToUseService {
       const artist = slugMatch[1];
       const title = slugMatch[2];
       try {
-        const res = await this.fetchWithRetry(`${this.baseUrl}/music/tracks/${encodeURIComponent(artist)}/${encodeURIComponent(title)}`, {
+        const res = await fetch(`${this.baseUrl}/music/tracks/${encodeURIComponent(artist)}/${encodeURIComponent(title)}`, {
           signal: AbortSignal.timeout(5000),
         });
         if (res.ok) {
@@ -278,4 +266,3 @@ export class FreeToUseService {
 }
 
 export const freeToUseService = new FreeToUseService();
-

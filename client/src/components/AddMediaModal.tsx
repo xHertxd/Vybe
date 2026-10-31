@@ -12,13 +12,13 @@ import {
 } from 'lucide-react';
 import { Modal } from './Modal.js';
 import { cn } from '../lib/cn.js';
-import { socket, getApiUrl, fetchServerConfig } from '../services/socket.js';
+import { socket, getApiUrl } from '../services/socket.js';
 import {
   searchSongs,
-  fetchInitialTracks,
+  CURATED_TRACKS,
   resolveDirectMedia,
 } from '../services/musicLibrary.js';
-import { invalidateFreeToUseCache } from '../services/freeToUse.js';
+import { fetchTrendingTracks } from '../services/freeToUse.js';
 import type { MediaItemInput } from '../types.js';
 import { formatDuration } from '../lib/format.js';
 
@@ -45,10 +45,8 @@ const POPULAR_QUERIES = [
 export function AddMediaModal({ open, onClose, notify }: AddMediaModalProps) {
   const [tab, setTab] = useState<ModalTab>('library');
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<MediaItemInput[]>([]);
+  const [searchResults, setSearchResults] = useState<MediaItemInput[]>(CURATED_TRACKS);
   const [isSearching, setIsSearching] = useState(false);
-  const [initialLoaded, setInitialLoaded] = useState(false);
-  const [maxUploadBytes, setMaxUploadBytes] = useState(30 * 1024 * 1024);
 
   // Link tab states
   const [linkInput, setLinkInput] = useState('');
@@ -65,21 +63,14 @@ export function AddMediaModal({ open, onClose, notify }: AddMediaModalProps) {
 
   useEffect(() => {
     if (open) {
-      void fetchServerConfig().then((cfg) => {
-        setMaxUploadBytes(cfg.uploadMaxBytes);
+      void fetchTrendingTracks(20).then((tracks) => {
+        if (tracks.length > 0 && !searchQuery) {
+          setSearchResults(tracks);
+        }
       });
-      if (!initialLoaded) {
-        void fetchInitialTracks(20).then((tracks) => {
-          if (tracks.length > 0 && !searchQuery) {
-            setSearchResults(tracks);
-            setInitialLoaded(true);
-          }
-        });
-      }
     } else {
       setSearchQuery('');
-      setSearchResults([]);
-      setInitialLoaded(false);
+      setSearchResults(CURATED_TRACKS);
       setLinkInput('');
       setLinkPreview(null);
       setLinkError(null);
@@ -93,9 +84,7 @@ export function AddMediaModal({ open, onClose, notify }: AddMediaModalProps) {
     if (searchTimer.current) clearTimeout(searchTimer.current);
 
     if (!text.trim()) {
-      void fetchInitialTracks(20).then((tracks) => {
-        setSearchResults(tracks);
-      });
+      setSearchResults(CURATED_TRACKS);
       setIsSearching(false);
       return;
     }
@@ -104,9 +93,9 @@ export function AddMediaModal({ open, onClose, notify }: AddMediaModalProps) {
     searchTimer.current = setTimeout(async () => {
       try {
         const results = await searchSongs(text);
-        setSearchResults(results);
+        setSearchResults(results.length > 0 ? results : CURATED_TRACKS);
       } catch {
-        setSearchResults([]);
+        setSearchResults(CURATED_TRACKS);
       } finally {
         setIsSearching(false);
       }
@@ -115,16 +104,12 @@ export function AddMediaModal({ open, onClose, notify }: AddMediaModalProps) {
 
   const handlePlayNow = (track: MediaItemInput) => {
     socket.emit('queue:play_now', { item: track });
-    invalidateFreeToUseCache('search');
-    invalidateFreeToUseCache('trending');
     notify('Playing now', `${track.title} · ${track.artist}`, 'success');
     onClose();
   };
 
   const handleAddToQueue = (track: MediaItemInput) => {
     socket.emit('queue:add', { item: track });
-    invalidateFreeToUseCache('search');
-    invalidateFreeToUseCache('trending');
     notify('Added to queue', `${track.title} · ${track.artist}`, 'success');
     onClose();
   };
@@ -153,14 +138,12 @@ export function AddMediaModal({ open, onClose, notify }: AddMediaModalProps) {
 
   const handleFileSelect = async (file: File) => {
     if (!file) return;
-    if (file.size > maxUploadBytes) {
-      const maxMB = Math.round(maxUploadBytes / (1024 * 1024));
-      notify('File too large', `Please select an audio file under ${maxMB} MB.`, 'error');
+    if (file.size > 50 * 1024 * 1024) {
+      notify('File too large', 'Please select an audio file under 50 MB.', 'error');
       return;
     }
 
     setIsUploading(true);
-    const cleanTitle = file.name.replace(/\.[a-z0-9]+$/i, '');
 
     try {
       const formData = new FormData();
@@ -178,26 +161,12 @@ export function AddMediaModal({ open, onClose, notify }: AddMediaModalProps) {
           return;
         }
       }
-    } catch {
-      // Fallback to local preview
+      throw new Error('Upload failed');
+    } catch (err) {
+      notify('Upload failed', err instanceof Error ? err.message : 'Could not upload audio file.', 'error');
     } finally {
       setIsUploading(false);
     }
-
-    const objectUrl = URL.createObjectURL(file);
-    const item: MediaItemInput = {
-      provider: 'audio',
-      sourceType: 'upload',
-      mediaId: `upload_${Date.now()}`,
-      url: objectUrl,
-      title: cleanTitle,
-      artist: 'Local Audio',
-      thumbnail: '',
-      duration: 180,
-      isPlayable: true,
-    };
-
-    setUploadedTrack(item);
   };
 
   return (
@@ -282,14 +251,12 @@ export function AddMediaModal({ open, onClose, notify }: AddMediaModalProps) {
                   onChange={(e) => handleQueryChange(e.target.value)}
                   placeholder="Search FreeToUse music library, artists, vibes, or paste links..."
                   className="w-full pl-10 pr-10 py-3 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder:text-[#a8a29e] text-sm focus:outline-none focus:border-[#40E0D0]/60 focus:bg-white/[0.06] transition-all"
-                  aria-describedby="search-results-count"
                 />
                 {searchQuery && (
                   <button
                     type="button"
                     onClick={() => handleQueryChange('')}
                     className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-[#a8a29e] hover:text-white"
-                    aria-label="Clear search"
                   >
                     <X className="w-4 h-4" />
                   </button>
@@ -316,8 +283,8 @@ export function AddMediaModal({ open, onClose, notify }: AddMediaModalProps) {
               {/* Track Results */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between text-xs text-[#a8a29e] px-1">
-                  <span id="search-results-count" className="font-semibold uppercase tracking-wider text-[10px]">
-                    {searchQuery ? `Search Results (${searchResults.length})` : searchResults.length > 0 ? 'Featured Tracks' : 'No tracks found'}
+                  <span className="font-semibold uppercase tracking-wider text-[10px]">
+                    {searchQuery ? `Search Results (${searchResults.length})` : 'Featured Tracks'}
                   </span>
                   {isSearching && (
                     <span className="flex items-center gap-1.5 text-xs text-[#fde5b7]">
@@ -326,24 +293,6 @@ export function AddMediaModal({ open, onClose, notify }: AddMediaModalProps) {
                     </span>
                   )}
                 </div>
-
-                {searchResults.length === 0 && !isSearching && (
-                  <div className="text-center py-8 text-[#a8a29e]">
-                    {searchQuery ? (
-                      <>
-                        <Search className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                        <p className="text-sm">No tracks found for "{searchQuery}"</p>
-                        <p className="text-xs mt-1">Try a different search or paste a direct link</p>
-                      </>
-                    ) : (
-                      <>
-                        <Music2 className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                        <p className="text-sm">Unable to load featured tracks</p>
-                        <p className="text-xs mt-1">Check your connection or try searching</p>
-                      </>
-                    )}
-                  </div>
-                )}
 
                 <div className="space-y-1.5">
                   {searchResults.map((track, idx) => (
@@ -391,7 +340,7 @@ export function AddMediaModal({ open, onClose, notify }: AddMediaModalProps) {
                           type="button"
                           onClick={() => handlePlayNow(track)}
                           className="px-3 py-1.5 rounded-lg bg-[#fde5b7] hover:bg-[#fee8c8] text-black font-semibold text-xs flex items-center gap-1.5 shadow-sm active:scale-95 transition-all"
-                          aria-label={`Play "${track.title}" on all devices`}
+                          title="Play directly on all devices"
                         >
                           <Play className="w-3.5 h-3.5 fill-current" />
                           <span>Play Now</span>
@@ -400,7 +349,7 @@ export function AddMediaModal({ open, onClose, notify }: AddMediaModalProps) {
                           type="button"
                           onClick={() => handleAddToQueue(track)}
                           className="p-1.5 rounded-lg bg-[#262629] hover:bg-[#313136] text-[#fde5b7] border border-white/10 hover:border-white/20 active:scale-95 transition-all"
-                          aria-label={`Add "${track.title}" to queue`}
+                          title="Add to queue"
                         >
                           <Plus className="w-4 h-4" />
                         </button>
@@ -486,7 +435,6 @@ export function AddMediaModal({ open, onClose, notify }: AddMediaModalProps) {
                       type="button"
                       onClick={() => handlePlayNow(linkPreview)}
                       className="flex-1 py-2 rounded-xl bg-[#fde5b7] text-black font-semibold text-xs hover:bg-[#fee8c8] flex items-center justify-center gap-1.5 transition-all shadow-sm"
-                      aria-label={`Play "${linkPreview.title}" on all devices`}
                     >
                       <Play className="w-3.5 h-3.5 fill-current" />
                       <span>Play Now</span>
@@ -495,7 +443,6 @@ export function AddMediaModal({ open, onClose, notify }: AddMediaModalProps) {
                       type="button"
                       onClick={() => handleAddToQueue(linkPreview)}
                       className="flex-1 py-2 rounded-xl bg-[#262629] text-[#fde5b7] font-semibold text-xs hover:bg-[#313136] border border-white/10 flex items-center justify-center gap-1.5 transition-all"
-                      aria-label={`Add "${linkPreview.title}" to queue`}
                     >
                       <Plus className="w-3.5 h-3.5" />
                       <span>Add to Queue</span>
@@ -549,7 +496,7 @@ export function AddMediaModal({ open, onClose, notify }: AddMediaModalProps) {
                 ) : (
                   <>
                     <p className="text-sm font-semibold text-white">Click or drag audio file here</p>
-                    <p className="text-xs text-[#a8a29e] mt-1">Supports MP3, WAV, AAC, M4A up to {Math.round(maxUploadBytes / (1024 * 1024))}MB</p>
+                    <p className="text-xs text-[#a8a29e] mt-1">Supports MP3, WAV, AAC, M4A up to 50MB</p>
                   </>
                 )}
               </div>
@@ -573,7 +520,6 @@ export function AddMediaModal({ open, onClose, notify }: AddMediaModalProps) {
                       type="button"
                       onClick={() => handlePlayNow(uploadedTrack)}
                       className="flex-1 py-2 rounded-xl bg-[#fde5b7] text-black font-semibold text-xs hover:bg-[#fee8c8] flex items-center justify-center gap-1.5 transition-all shadow-sm"
-                      aria-label={`Play "${uploadedTrack.title}" on all devices`}
                     >
                       <Play className="w-3.5 h-3.5 fill-current" />
                       <span>Play Now</span>
@@ -582,7 +528,6 @@ export function AddMediaModal({ open, onClose, notify }: AddMediaModalProps) {
                       type="button"
                       onClick={() => handleAddToQueue(uploadedTrack)}
                       className="flex-1 py-2 rounded-xl bg-[#262629] text-[#fde5b7] font-semibold text-xs hover:bg-[#313136] border border-white/10 flex items-center justify-center gap-1.5 transition-all"
-                      aria-label={`Add "${uploadedTrack.title}" to queue`}
                     >
                       <Plus className="w-3.5 h-3.5" />
                       <span>Add to Queue</span>

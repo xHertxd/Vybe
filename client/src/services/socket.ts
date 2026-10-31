@@ -131,37 +131,3 @@ export function resetServerUrl(): void {
 export function waitForConnection(): Promise<boolean> {
   return Promise.resolve(true);
 }
-
-export interface ServerConfig {
-  uploadMaxBytes: number;
-  maxUsersPerRoom: number;
-  maxQueueLength: number;
-  scheduleDelayMs: number;
-  heartbeatIntervalMs: number;
-  disconnectGraceMs: number;
-}
-
-let cachedConfig: ServerConfig | null = null;
-
-export async function fetchServerConfig(): Promise<ServerConfig> {
-  if (cachedConfig) return cachedConfig;
-  try {
-    const res = await fetch(getApiUrl('/api/config'), { signal: AbortSignal.timeout(3000) });
-    if (res.ok) {
-      cachedConfig = await res.json();
-      return cachedConfig;
-    }
-  } catch {
-    // Use defaults
-  }
-  // Fallback defaults matching server config
-  cachedConfig = {
-    uploadMaxBytes: 30 * 1024 * 1024,
-    maxUsersPerRoom: 50,
-    maxQueueLength: 200,
-    scheduleDelayMs: 600,
-    heartbeatIntervalMs: 5000,
-    disconnectGraceMs: 30 * 60 * 1000,
-  };
-  return cachedConfig;
-}

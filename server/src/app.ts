@@ -5,10 +5,9 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import cors from 'cors';
 import multer from 'multer';
-import rateLimit from 'express-rate-limit';
 import { Server as SocketIOServer, type Socket } from 'socket.io';
 import { config } from './config.js';
-import type { MediaItemInput, ResolveMediaResponse } from './types.js';
+import type { MediaItemInput } from './types.js';
 import { MediaResolver } from './media/mediaResolver.js';
 import { MediaSynchronizationEngine } from './sync/mediaSynchronizationEngine.js';
 import { RoomManager, RoomError } from './room/roomManager.js';
@@ -33,47 +32,15 @@ function errorPayload(error: unknown): { message: string; code: string } {
   return { message: 'Something went wrong.', code: 'ERROR' };
 }
 
-async function searchYouTubeTracks(query: string, youtubeApiKey?: string): Promise<MediaItemInput[]> {
-  // Use YouTube Data API v3 if key is available (reliable, official)
-  if (youtubeApiKey) {
-    try {
-      const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&type=video&maxResults=15&key=${youtubeApiKey}`;
-      const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
-      if (res.ok) {
-        const json = (await res.json()) as { items?: Array<{ id: { videoId: string }; snippet: { title: string; channelTitle: string; thumbnails: { medium: { url: string } } } }> };
-        if (json.items?.length) {
-          return json.items.map((item) => ({
-            provider: 'youtube',
-            sourceType: 'video',
-            mediaId: item.id.videoId,
-            url: `https://www.youtube.com/watch?v=${item.id.videoId}`,
-            title: item.snippet.title,
-            artist: item.snippet.channelTitle,
-            thumbnail: item.snippet.thumbnails.medium?.url || `https://img.youtube.com/vi/${item.id.videoId}/hqdefault.jpg`,
-            duration: 210, // duration not in search results; player will measure
-            isPlayable: true,
-          }));
-        }
-      }
-    } catch (err) {
-      console.warn('YouTube Data API search failed:', err);
-    }
-  }
-
-  // Fallback: HTML scraping (fragile, use only as last resort)
-  if (!youtubeApiKey) {
-    console.warn('No YOUTUBE_API_KEY set — YouTube search disabled. Set YOUTUBE_API_KEY to enable.');
-    return [];
-  }
-
+async function searchYouTubeTracks(query: string): Promise<MediaItemInput[]> {
   try {
     const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
     const res = await fetch(url, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept-Language': 'en-US,en;q=0.9',
       },
-      signal: AbortSignal.timeout(8000),
     });
     const html = await res.text();
     const match =
@@ -122,7 +89,7 @@ async function searchYouTubeTracks(query: string, youtubeApiKey?: string): Promi
     }
     return videos;
   } catch (err) {
-    console.warn('YouTube HTML search failed:', err);
+    console.warn('YouTube search failed:', err);
     return [];
   }
 }
@@ -150,28 +117,6 @@ export function createVybeServer() {
     })
   );
   app.use(express.json({ limit: '1mb' }));
-
-  // Public config endpoint for client to fetch limits, timeouts, etc.
-  app.get('/api/config', (_req, res) => {
-    res.json({
-      uploadMaxBytes: config.uploadMaxBytes,
-      maxUsersPerRoom: config.maxUsersPerRoom,
-      maxQueueLength: config.maxQueueLength,
-      scheduleDelayMs: config.scheduleDelayMs,
-      heartbeatIntervalMs: config.heartbeatIntervalMs,
-      disconnectGraceMs: config.disconnectGraceMs,
-    });
-  });
-
-  // Rate limiting for public search/library endpoints
-  const searchLimiter = rateLimit({
-    windowMs: 60_000, // 1 minute
-    max: 30, // 30 requests per window per IP
-    standardHeaders: true,
-    legacyHeaders: false,
-    message: { success: false, error: 'Too many requests. Please slow down.' },
-    skip: (req) => req.method === 'OPTIONS',
-  });
 
   const mediaResolver = new MediaResolver(
     config.youtubeApiKey,
@@ -221,7 +166,7 @@ export function createVybeServer() {
     res.json({ status: 'ok', uptime: process.uptime(), serverTime: Date.now() });
   });
 
-  app.get('/api/search', searchLimiter, async (req, res) => {
+  app.get('/api/search', async (req, res) => {
     try {
       const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
       const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 20));
@@ -235,8 +180,8 @@ export function createVybeServer() {
       // Search FreeToUse library first
       const freeToUseResults = await freeToUseService.search(q, limit);
 
-      // Search YouTube concurrently for mainstream pop/video coverage (requires YOUTUBE_API_KEY)
-      const youtubeResults = await searchYouTubeTracks(q, config.youtubeApiKey).catch(() => []);
+      // Search YouTube concurrently for mainstream pop/video coverage
+      const youtubeResults = await searchYouTubeTracks(q).catch(() => []);
 
       // Deduplicate and combine (FreeToUse direct audio tracks prioritized first!)
       const combined = [...freeToUseResults, ...youtubeResults];
@@ -246,7 +191,7 @@ export function createVybeServer() {
     }
   });
 
-  app.get('/api/library/trending', searchLimiter, async (req, res) => {
+  app.get('/api/library/trending', async (req, res) => {
     try {
       const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 20));
       const tracks = await freeToUseService.getTrending(limit);
@@ -256,7 +201,7 @@ export function createVybeServer() {
     }
   });
 
-  app.get('/api/library/categories', searchLimiter, async (_req, res) => {
+  app.get('/api/library/categories', async (_req, res) => {
     try {
       const categories = await freeToUseService.getCategories();
       res.json({ success: true, categories });
@@ -265,9 +210,9 @@ export function createVybeServer() {
     }
   });
 
-  app.get('/api/library/category/:id', searchLimiter, async (req, res) => {
+  app.get('/api/library/category/:id', async (req, res) => {
     try {
-      const categoryId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+      const categoryId = req.params.id;
       const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 20));
       const tracks = await freeToUseService.getTracksByCategory(categoryId, limit);
       res.json({ success: true, tracks });
@@ -300,7 +245,7 @@ export function createVybeServer() {
       if (/freetouse\.com/i.test(cleanUrl)) {
         const ftuTrack = await freeToUseService.resolveUrl(cleanUrl);
         if (ftuTrack) {
-          const response: ResolveMediaResponse = {
+          res.json({
             success: true,
             data: {
               provider: 'audio',
@@ -310,18 +255,15 @@ export function createVybeServer() {
               thumbnail: ftuTrack.thumbnail,
               items: [ftuTrack],
             },
-          };
-          res.json(response);
+          });
           return;
         }
       }
 
       const data = await mediaResolver.resolve(cleanUrl);
-      const response: ResolveMediaResponse = { success: true, data };
-      res.json(response);
+      res.json({ success: true, data });
     } catch (error) {
-      const errResponse: ResolveMediaResponse = { success: false, error: errorPayload(error).message };
-      res.status(400).json(errResponse);
+      res.status(400).json({ success: false, error: errorPayload(error).message });
     }
   });
 

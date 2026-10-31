@@ -108,8 +108,8 @@ export function RoomEntryPage({
   };
 
   useEffect(() => {
-    if (initialCode && /^\d{6}$/.test(initialCode)) {
-      autoJoinTriggered.current = false; // allow re-join on username change
+    if (initialCode && /^\d{6}$/.test(initialCode) && !autoJoinTriggered.current) {
+      autoJoinTriggered.current = true;
       setDigits(initialCode.split(''));
       const timer = setTimeout(() => {
         submitJoin(initialCode, username);

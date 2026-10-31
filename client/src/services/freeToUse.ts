@@ -25,18 +25,6 @@ function setCached<T>(key: string, data: T, ttlMs: number): void {
   });
 }
 
-export function invalidateFreeToUseCache(pattern?: string): void {
-  if (!pattern) {
-    memoryCache.clear();
-    return;
-  }
-  for (const key of memoryCache.keys()) {
-    if (key.includes(pattern)) {
-      memoryCache.delete(key);
-    }
-  }
-}
-
 /**
  * Search the FreeToUse music library via backend proxy.
  */
@@ -136,4 +124,3 @@ export async function fetchCategoryTracks(categoryId: string, limit = 20): Promi
     return [];
   }
 }
-

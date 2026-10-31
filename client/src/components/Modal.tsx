@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { cn } from '../lib/cn.js';
@@ -13,33 +13,6 @@ interface ModalProps {
   hideClose?: boolean;
 }
 
-function trapFocus(element: HTMLElement): () => void {
-  const focusableElements = element.querySelectorAll<HTMLElement>(
-    'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-  );
-  const firstElement = focusableElements[0];
-  const lastElement = focusableElements[focusableElements.length - 1];
-
-  const handleTab = (e: KeyboardEvent) => {
-    if (e.key !== 'Tab') return;
-    if (e.shiftKey) {
-      if (document.activeElement === firstElement) {
-        e.preventDefault();
-        lastElement?.focus();
-      }
-    } else {
-      if (document.activeElement === lastElement) {
-        e.preventDefault();
-        firstElement?.focus();
-      }
-    }
-  };
-
-  element.addEventListener('keydown', handleTab);
-  firstElement?.focus();
-  return () => element.removeEventListener('keydown', handleTab);
-}
-
 export function Modal({
   open,
   onClose,
@@ -49,8 +22,6 @@ export function Modal({
   className,
   hideClose = false,
 }: ModalProps) {
-  const dialogRef = useRef<HTMLDivElement>(null);
-
   useEffect(() => {
     if (!open) return;
     const onKey = (event: KeyboardEvent) => {
@@ -59,14 +30,9 @@ export function Modal({
     document.addEventListener('keydown', onKey);
     const previous = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    let cleanupFocus: (() => void) | null = null;
-    if (dialogRef.current) {
-      cleanupFocus = trapFocus(dialogRef.current);
-    }
     return () => {
       document.removeEventListener('keydown', onKey);
       document.body.style.overflow = previous;
-      cleanupFocus?.();
     };
   }, [open, onClose]);
 
@@ -81,11 +47,9 @@ export function Modal({
         className="absolute inset-0 cursor-default bg-ink/30 backdrop-blur-sm"
       />
       <div
-        ref={dialogRef}
         role="dialog"
         aria-modal="true"
-        aria-labelledby={title ? undefined : 'modal-title'}
-        aria-describedby={description ? 'modal-desc' : undefined}
+        aria-label={title || 'Dialog'}
         className={cn(
           'animate-rise relative z-10 w-full max-w-lg overflow-hidden rounded-t-3xl border border-sand sm:rounded-3xl',
           'panel',
@@ -95,9 +59,9 @@ export function Modal({
         {(title || !hideClose) && (
           <div className="flex items-start justify-between gap-4 border-b border-sand px-5 py-4 sm:px-6 sm:py-5">
             <div>
-              {title && <h2 id="modal-title" className="font-display text-xl font-semibold text-ink">{title}</h2>}
+              {title && <h2 className="font-display text-xl font-semibold text-ink">{title}</h2>}
               {description && (
-                <p id="modal-desc" className="mt-1 text-xs leading-relaxed text-taupe">{description}</p>
+                <p className="mt-1 text-xs leading-relaxed text-taupe">{description}</p>
               )}
             </div>
             {!hideClose && (

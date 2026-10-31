@@ -7,7 +7,13 @@
     "strict": true,
     "skipLibCheck": true,
     "rootDir": "src",
-    "outDir": "dist"
+    "outDir": "dist",
+    "baseUrl": ".",
+    "paths": {
+      "@vybe/shared": ["../packages/shared/src"],
+      "@vybe/shared/*": ["../packages/shared/src/*"]
+    }
   },
-  "include": ["src/**/*"]
+  "include": ["src/**/*"],
+  "references": [{ "path": "../packages/shared" }]
 }

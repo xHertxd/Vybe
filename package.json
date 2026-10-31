@@ -4,7 +4,8 @@
   "description": "Vybe - Synchronized Multi-Device Music & Media Player",
   "workspaces": [
     "client",
-    "server"
+    "server",
+    "packages/shared"
   ],
   "scripts": {
     "dev": "concurrently -n \"server,client\" -c \"magenta,cyan\" \"npm run server\" \"npm run client\"",
