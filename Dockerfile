@@ -2,16 +2,18 @@
 # syntax = docker/dockerfile:1.4
 FROM node:20-alpine AS builder
 
-WORKDIR /app
-
-# Copy server directory (package files + source)
-COPY server/ ./server/
-
-# Install server dependencies
 WORKDIR /app/server
+
+# Copy server package manifests first for layer caching
+COPY server/package.json server/package-lock.json ./
+
+# Install all dependencies required for building
 RUN npm ci
 
-# Build TypeScript
+# Copy server source code
+COPY server/ ./
+
+# Build TypeScript to /app/server/dist
 RUN npm run build
 
 # --- Production Runner Stage ---
@@ -23,8 +25,7 @@ ENV NODE_ENV=production
 ENV PORT=10000
 
 # Copy server package manifests
-COPY server/package.json ./
-COPY server/package-lock.json ./
+COPY server/package.json server/package-lock.json ./
 
 # Install production dependencies only
 RUN npm ci --omit=dev

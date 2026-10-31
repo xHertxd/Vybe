@@ -114,7 +114,7 @@ export function useMediaPlayer({
           try { outgoingAdapterRef.current.destroy(); } catch {}
         }
         outgoingAdapterRef.current = previous;
-        const fadeMs = Math.min(fadeDurationSec * 1000, 2500);
+        const fadeMs = Math.min(Math.max(500, fadeDurationSec * 1000), 8000);
         try {
           previous.fade(volume, 0, fadeMs);
         } catch {}
@@ -151,7 +151,7 @@ export function useMediaPlayer({
       setPhase('ready');
       setAdapterTick((tick) => tick + 1);
       if (isPreviousPlaying && fadeDurationSec > 0 && adapter.fade) {
-        adapter.fade(0, volume, Math.min(fadeDurationSec * 1000, 2500));
+        adapter.fade(0, volume, Math.min(Math.max(500, fadeDurationSec * 1000), 8000));
       }
       // Immediately apply current authoritative playback state
       const now = clockSync.getServerNow();

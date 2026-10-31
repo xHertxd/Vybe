@@ -213,6 +213,7 @@ export class HowlerAudioAdapter implements PlayerAdapter {
 export class AudioAdapter implements PlayerAdapter {
   public readonly provider = 'audio' as const;
   private ready = false;
+  private fadeRafId: number | null = null;
   private readonly element: HTMLAudioElement;
   private readonly onReadyCallback?: () => void;
   private readonly onEndedCallback?: () => void;
@@ -276,6 +277,10 @@ export class AudioAdapter implements PlayerAdapter {
   }
 
   public fade(from: number, to: number, durationMs: number): void {
+    if (this.fadeRafId !== null) {
+      cancelAnimationFrame(this.fadeRafId);
+      this.fadeRafId = null;
+    }
     const startTime = performance.now();
     const duration = Math.max(50, durationMs);
     const startVol = Math.max(0, Math.min(1, from));
@@ -286,13 +291,19 @@ export class AudioAdapter implements PlayerAdapter {
       const progress = Math.min(1, elapsed / duration);
       this.element.volume = startVol + (targetVol - startVol) * progress;
       if (progress < 1) {
-        requestAnimationFrame(step);
+        this.fadeRafId = requestAnimationFrame(step);
+      } else {
+        this.fadeRafId = null;
       }
     };
-    step();
+    this.fadeRafId = requestAnimationFrame(step);
   }
 
   public destroy(): void {
+    if (this.fadeRafId !== null) {
+      cancelAnimationFrame(this.fadeRafId);
+      this.fadeRafId = null;
+    }
     this.element.removeEventListener('loadedmetadata', this.onReady);
     this.element.removeEventListener('canplay', this.onReady);
     this.element.removeEventListener('ended', this.onEnded);
@@ -400,6 +411,7 @@ const YOUTUBE_ERRORS: Record<number, string> = {
 export class YouTubeAdapter implements PlayerAdapter {
   public readonly provider = 'youtube' as const;
   private ready = false;
+  private fadeRafId: number | null = null;
   private errorMessage: string | null = null;
   private volume = 85;
   private currentPos = 0;
@@ -550,6 +562,10 @@ export class YouTubeAdapter implements PlayerAdapter {
   }
 
   public fade(from: number, to: number, durationMs: number): void {
+    if (this.fadeRafId !== null) {
+      cancelAnimationFrame(this.fadeRafId);
+      this.fadeRafId = null;
+    }
     const startTime = performance.now();
     const duration = Math.max(50, durationMs);
     const startVol = Math.max(0, Math.min(1, from)) * 100;
@@ -565,13 +581,19 @@ export class YouTubeAdapter implements PlayerAdapter {
         }
       } catch {}
       if (progress < 1) {
-        requestAnimationFrame(step);
+        this.fadeRafId = requestAnimationFrame(step);
+      } else {
+        this.fadeRafId = null;
       }
     };
-    step();
+    this.fadeRafId = requestAnimationFrame(step);
   }
 
   public destroy(): void {
+    if (this.fadeRafId !== null) {
+      cancelAnimationFrame(this.fadeRafId);
+      this.fadeRafId = null;
+    }
     try {
       if (typeof this.player?.destroy === 'function') {
         this.player.destroy();

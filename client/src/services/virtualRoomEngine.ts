@@ -424,6 +424,34 @@ class VirtualRoomEngine {
       }
     }
 
+    if (event === 'playback:force_sync') {
+      const roomCode = (payload.roomCode as string) || this.activeRoomCode;
+      if (!roomCode) return true;
+
+      const state = this.getStoredRoom(roomCode) || this.currentRoomState;
+      if (!state) return true;
+
+      const currentTrack = state.playback.currentTrack;
+      if (!currentTrack) return true;
+
+      const isPlaying = state.playback.status === 'playing';
+      const elapsed = isPlaying && state.playback.scheduledStartTime && now >= state.playback.scheduledStartTime
+        ? (now - state.playback.scheduledStartTime) / 1000
+        : 0;
+      const position = Math.max(0, state.playback.position + elapsed);
+
+      state.playback.position = position;
+      state.playback.serverTimestamp = now;
+      state.playback.scheduledStartTime = isPlaying ? now + 600 : null;
+      state.version = now;
+      this.currentRoomState = state;
+      this.saveRoom(state);
+
+      this.emit('playback:sync', state.playback);
+      this.broadcast('sync_state', state);
+      return true;
+    }
+
     if (event === 'queue:play_now') {
       const roomCode = (payload.roomCode as string) || this.activeRoomCode;
       const itemInput = payload.item as MediaItemInput;
@@ -460,34 +488,6 @@ class VirtualRoomEngine {
       return true;
     }
 
-    if (event === 'playback:force_sync') {
-      const roomCode = (payload.roomCode as string) || this.activeRoomCode;
-      if (!roomCode) return true;
-
-      const state = this.getStoredRoom(roomCode) || this.currentRoomState;
-      if (!state) return true;
-
-      const currentTrack = state.playback.currentTrack;
-      if (!currentTrack) return true;
-
-      const isPlaying = state.playback.status === 'playing';
-      const elapsed = isPlaying && state.playback.scheduledStartTime && now >= state.playback.scheduledStartTime
-        ? (now - state.playback.scheduledStartTime) / 1000
-        : 0;
-      const position = Math.max(0, state.playback.position + elapsed);
-
-      state.playback.position = position;
-      state.playback.serverTimestamp = now;
-      state.playback.scheduledStartTime = isPlaying ? now + 600 : null;
-      state.version = now;
-      this.currentRoomState = state;
-      this.saveRoom(state);
-
-      this.emit('playback:sync', state.playback);
-      this.broadcast('sync_state', state);
-      return true;
-    }
-
     if (event === 'playback:play_index' || event === 'queue:play_index') {
       const roomCode = (payload.roomCode as string) || this.activeRoomCode;
       const index = typeof payload.index === 'number' ? payload.index : 0;
@@ -511,34 +511,6 @@ class VirtualRoomEngine {
       this.saveRoom(state);
 
       this.emit('queue:updated', { queue: state.queue, currentIndex: state.currentIndex });
-      this.emit('playback:sync', state.playback);
-      this.broadcast('sync_state', state);
-      return true;
-    }
-
-    if (event === 'playback:force_sync') {
-      const roomCode = (payload.roomCode as string) || this.activeRoomCode;
-      if (!roomCode) return true;
-
-      const state = this.getStoredRoom(roomCode) || this.currentRoomState;
-      if (!state) return true;
-
-      const currentTrack = state.playback.currentTrack;
-      if (!currentTrack) return true;
-
-      const isPlaying = state.playback.status === 'playing';
-      const elapsed = isPlaying && state.playback.scheduledStartTime && now >= state.playback.scheduledStartTime
-        ? (now - state.playback.scheduledStartTime) / 1000
-        : 0;
-      const position = Math.max(0, state.playback.position + elapsed);
-
-      state.playback.position = position;
-      state.playback.serverTimestamp = now;
-      state.playback.scheduledStartTime = isPlaying ? now + 600 : null;
-      state.version = now;
-      this.currentRoomState = state;
-      this.saveRoom(state);
-
       this.emit('playback:sync', state.playback);
       this.broadcast('sync_state', state);
       return true;
@@ -584,34 +556,6 @@ class VirtualRoomEngine {
       return true;
     }
 
-    if (event === 'playback:force_sync') {
-      const roomCode = (payload.roomCode as string) || this.activeRoomCode;
-      if (!roomCode) return true;
-
-      const state = this.getStoredRoom(roomCode) || this.currentRoomState;
-      if (!state) return true;
-
-      const currentTrack = state.playback.currentTrack;
-      if (!currentTrack) return true;
-
-      const isPlaying = state.playback.status === 'playing';
-      const elapsed = isPlaying && state.playback.scheduledStartTime && now >= state.playback.scheduledStartTime
-        ? (now - state.playback.scheduledStartTime) / 1000
-        : 0;
-      const position = Math.max(0, state.playback.position + elapsed);
-
-      state.playback.position = position;
-      state.playback.serverTimestamp = now;
-      state.playback.scheduledStartTime = isPlaying ? now + 600 : null;
-      state.version = now;
-      this.currentRoomState = state;
-      this.saveRoom(state);
-
-      this.emit('playback:sync', state.playback);
-      this.broadcast('sync_state', state);
-      return true;
-    }
-
     if (event === 'queue:reorder') {
       const roomCode = (payload.roomCode as string) || this.activeRoomCode;
       const fromIndex = typeof payload.fromIndex === 'number' ? payload.fromIndex : -1;
@@ -621,8 +565,18 @@ class VirtualRoomEngine {
       const state = this.getStoredRoom(roomCode) || this.currentRoomState;
       if (!state || !state.queue[fromIndex] || !state.queue[toIndex]) return true;
 
+      const currentItem = state.queue[state.currentIndex];
       const [moved] = state.queue.splice(fromIndex, 1);
       state.queue.splice(toIndex, 0, moved);
+
+      // Keep currentIndex pointing to the same active track
+      if (currentItem) {
+        const newIndex = state.queue.findIndex((item) => item.id === currentItem.id);
+        if (newIndex !== -1) {
+          state.currentIndex = newIndex;
+        }
+      }
+
       state.version = now;
       this.currentRoomState = state;
       this.saveRoom(state);
@@ -640,12 +594,46 @@ class VirtualRoomEngine {
       const state = this.getStoredRoom(roomCode) || this.currentRoomState;
       if (!state) return true;
 
-      state.queue = state.queue.filter((item) => item.id !== itemId);
+      const removeIndex = state.queue.findIndex((item) => item.id === itemId);
+      if (removeIndex === -1) return true;
+
+      const isCurrent = removeIndex === state.currentIndex;
+      state.queue.splice(removeIndex, 1);
+
+      if (state.queue.length === 0) {
+        state.currentIndex = 0;
+        state.playback = {
+          status: 'stopped',
+          currentTrack: null,
+          position: 0,
+          serverTimestamp: now,
+          scheduledStartTime: null,
+          playbackRate: 1,
+          version: now,
+        };
+      } else {
+        if (isCurrent) {
+          state.currentIndex = removeIndex % state.queue.length;
+          state.playback = {
+            status: 'playing',
+            currentTrack: state.queue[state.currentIndex],
+            position: 0,
+            serverTimestamp: now,
+            scheduledStartTime: null,
+            playbackRate: 1,
+            version: now,
+          };
+        } else if (removeIndex < state.currentIndex) {
+          state.currentIndex = Math.max(0, state.currentIndex - 1);
+        }
+      }
+
       state.version = now;
       this.currentRoomState = state;
       this.saveRoom(state);
 
       this.emit('queue:updated', { queue: state.queue, currentIndex: state.currentIndex });
+      this.emit('playback:sync', state.playback);
       this.broadcast('sync_state', state);
       return true;
     }
@@ -678,34 +666,6 @@ class VirtualRoomEngine {
       return true;
     }
 
-    if (event === 'playback:force_sync') {
-      const roomCode = (payload.roomCode as string) || this.activeRoomCode;
-      if (!roomCode) return true;
-
-      const state = this.getStoredRoom(roomCode) || this.currentRoomState;
-      if (!state) return true;
-
-      const currentTrack = state.playback.currentTrack;
-      if (!currentTrack) return true;
-
-      const isPlaying = state.playback.status === 'playing';
-      const elapsed = isPlaying && state.playback.scheduledStartTime && now >= state.playback.scheduledStartTime
-        ? (now - state.playback.scheduledStartTime) / 1000
-        : 0;
-      const position = Math.max(0, state.playback.position + elapsed);
-
-      state.playback.position = position;
-      state.playback.serverTimestamp = now;
-      state.playback.scheduledStartTime = isPlaying ? now + 600 : null;
-      state.version = now;
-      this.currentRoomState = state;
-      this.saveRoom(state);
-
-      this.emit('playback:sync', state.playback);
-      this.broadcast('sync_state', state);
-      return true;
-    }
-
     if (event === 'playback:play') {
       const roomCode = (payload.roomCode as string) || this.activeRoomCode;
       if (!roomCode) return true;
@@ -716,34 +676,6 @@ class VirtualRoomEngine {
       state.playback.status = 'playing';
       state.playback.serverTimestamp = now;
       state.playback.scheduledStartTime = now + 1000;
-      state.version = now;
-      this.currentRoomState = state;
-      this.saveRoom(state);
-
-      this.emit('playback:sync', state.playback);
-      this.broadcast('sync_state', state);
-      return true;
-    }
-
-    if (event === 'playback:force_sync') {
-      const roomCode = (payload.roomCode as string) || this.activeRoomCode;
-      if (!roomCode) return true;
-
-      const state = this.getStoredRoom(roomCode) || this.currentRoomState;
-      if (!state) return true;
-
-      const currentTrack = state.playback.currentTrack;
-      if (!currentTrack) return true;
-
-      const isPlaying = state.playback.status === 'playing';
-      const elapsed = isPlaying && state.playback.scheduledStartTime && now >= state.playback.scheduledStartTime
-        ? (now - state.playback.scheduledStartTime) / 1000
-        : 0;
-      const position = Math.max(0, state.playback.position + elapsed);
-
-      state.playback.position = position;
-      state.playback.serverTimestamp = now;
-      state.playback.scheduledStartTime = isPlaying ? now + 600 : null;
       state.version = now;
       this.currentRoomState = state;
       this.saveRoom(state);
@@ -773,34 +705,6 @@ class VirtualRoomEngine {
       return true;
     }
 
-    if (event === 'playback:force_sync') {
-      const roomCode = (payload.roomCode as string) || this.activeRoomCode;
-      if (!roomCode) return true;
-
-      const state = this.getStoredRoom(roomCode) || this.currentRoomState;
-      if (!state) return true;
-
-      const currentTrack = state.playback.currentTrack;
-      if (!currentTrack) return true;
-
-      const isPlaying = state.playback.status === 'playing';
-      const elapsed = isPlaying && state.playback.scheduledStartTime && now >= state.playback.scheduledStartTime
-        ? (now - state.playback.scheduledStartTime) / 1000
-        : 0;
-      const position = Math.max(0, state.playback.position + elapsed);
-
-      state.playback.position = position;
-      state.playback.serverTimestamp = now;
-      state.playback.scheduledStartTime = isPlaying ? now + 600 : null;
-      state.version = now;
-      this.currentRoomState = state;
-      this.saveRoom(state);
-
-      this.emit('playback:sync', state.playback);
-      this.broadcast('sync_state', state);
-      return true;
-    }
-
     if (event === 'playback:seek') {
       const roomCode = (payload.roomCode as string) || this.activeRoomCode;
       if (!roomCode) return true;
@@ -812,63 +716,6 @@ class VirtualRoomEngine {
       state.playback.position = position;
       state.playback.serverTimestamp = now;
       state.playback.scheduledStartTime = now + 1000;
-      state.version = now;
-      this.currentRoomState = state;
-      this.saveRoom(state);
-
-      this.emit('playback:sync', state.playback);
-      this.broadcast('sync_state', state);
-      return true;
-    }
-
-    if (event === 'playback:force_sync') {
-      const roomCode = (payload.roomCode as string) || this.activeRoomCode;
-      if (!roomCode) return true;
-
-      const state = this.getStoredRoom(roomCode) || this.currentRoomState;
-      if (!state) return true;
-
-      const currentTrack = state.playback.currentTrack;
-      if (!currentTrack) return true;
-
-      const isPlaying = state.playback.status === 'playing';
-      const elapsed = isPlaying && state.playback.scheduledStartTime && now >= state.playback.scheduledStartTime
-        ? (now - state.playback.scheduledStartTime) / 1000
-        : 0;
-      const position = Math.max(0, state.playback.position + elapsed);
-
-      state.playback.position = position;
-      state.playback.serverTimestamp = now;
-      state.playback.scheduledStartTime = isPlaying ? now + 600 : null;
-      state.version = now;
-      this.currentRoomState = state;
-      this.saveRoom(state);
-
-      this.emit('playback:sync', state.playback);
-      this.broadcast('sync_state', state);
-      return true;
-    }
-
-    if (event === 'playback:force_sync') {
-      const roomCode = (payload.roomCode as string) || this.activeRoomCode;
-      if (!roomCode) return true;
-
-      const state = this.getStoredRoom(roomCode) || this.currentRoomState;
-      if (!state) return true;
-
-      const currentTrack = state.playback.currentTrack;
-      if (!currentTrack) return true;
-
-      const isPlaying = state.playback.status === 'playing';
-      const elapsed =
-        isPlaying && state.playback.scheduledStartTime && now >= state.playback.scheduledStartTime
-          ? (now - state.playback.scheduledStartTime) / 1000
-          : 0;
-      const position = Math.max(0, state.playback.position + elapsed);
-
-      state.playback.position = position;
-      state.playback.serverTimestamp = now;
-      state.playback.scheduledStartTime = isPlaying ? now + 600 : null;
       state.version = now;
       this.currentRoomState = state;
       this.saveRoom(state);
@@ -900,34 +747,6 @@ class VirtualRoomEngine {
       this.saveRoom(state);
 
       this.emit('queue:updated', { queue: state.queue, currentIndex: state.currentIndex });
-      this.emit('playback:sync', state.playback);
-      this.broadcast('sync_state', state);
-      return true;
-    }
-
-    if (event === 'playback:force_sync') {
-      const roomCode = (payload.roomCode as string) || this.activeRoomCode;
-      if (!roomCode) return true;
-
-      const state = this.getStoredRoom(roomCode) || this.currentRoomState;
-      if (!state) return true;
-
-      const currentTrack = state.playback.currentTrack;
-      if (!currentTrack) return true;
-
-      const isPlaying = state.playback.status === 'playing';
-      const elapsed = isPlaying && state.playback.scheduledStartTime && now >= state.playback.scheduledStartTime
-        ? (now - state.playback.scheduledStartTime) / 1000
-        : 0;
-      const position = Math.max(0, state.playback.position + elapsed);
-
-      state.playback.position = position;
-      state.playback.serverTimestamp = now;
-      state.playback.scheduledStartTime = isPlaying ? now + 600 : null;
-      state.version = now;
-      this.currentRoomState = state;
-      this.saveRoom(state);
-
       this.emit('playback:sync', state.playback);
       this.broadcast('sync_state', state);
       return true;
@@ -979,34 +798,6 @@ class VirtualRoomEngine {
       return true;
     }
 
-    if (event === 'playback:force_sync') {
-      const roomCode = (payload.roomCode as string) || this.activeRoomCode;
-      if (!roomCode) return true;
-
-      const state = this.getStoredRoom(roomCode) || this.currentRoomState;
-      if (!state) return true;
-
-      const currentTrack = state.playback.currentTrack;
-      if (!currentTrack) return true;
-
-      const isPlaying = state.playback.status === 'playing';
-      const elapsed = isPlaying && state.playback.scheduledStartTime && now >= state.playback.scheduledStartTime
-        ? (now - state.playback.scheduledStartTime) / 1000
-        : 0;
-      const position = Math.max(0, state.playback.position + elapsed);
-
-      state.playback.position = position;
-      state.playback.serverTimestamp = now;
-      state.playback.scheduledStartTime = isPlaying ? now + 600 : null;
-      state.version = now;
-      this.currentRoomState = state;
-      this.saveRoom(state);
-
-      this.emit('playback:sync', state.playback);
-      this.broadcast('sync_state', state);
-      return true;
-    }
-
     if (event === 'track:ended' || event === 'playback:track_ended') {
       const roomCode = (payload.roomCode as string) || this.activeRoomCode;
       if (!roomCode) return true;
@@ -1035,34 +826,6 @@ class VirtualRoomEngine {
       return true;
     }
 
-    if (event === 'playback:force_sync') {
-      const roomCode = (payload.roomCode as string) || this.activeRoomCode;
-      if (!roomCode) return true;
-
-      const state = this.getStoredRoom(roomCode) || this.currentRoomState;
-      if (!state) return true;
-
-      const currentTrack = state.playback.currentTrack;
-      if (!currentTrack) return true;
-
-      const isPlaying = state.playback.status === 'playing';
-      const elapsed = isPlaying && state.playback.scheduledStartTime && now >= state.playback.scheduledStartTime
-        ? (now - state.playback.scheduledStartTime) / 1000
-        : 0;
-      const position = Math.max(0, state.playback.position + elapsed);
-
-      state.playback.position = position;
-      state.playback.serverTimestamp = now;
-      state.playback.scheduledStartTime = isPlaying ? now + 600 : null;
-      state.version = now;
-      this.currentRoomState = state;
-      this.saveRoom(state);
-
-      this.emit('playback:sync', state.playback);
-      this.broadcast('sync_state', state);
-      return true;
-    }
-
     if (event === 'settings:update') {
       const roomCode = (payload.roomCode as string) || this.activeRoomCode;
       const settingsInput = payload.settings as Partial<RoomSettings>;
@@ -1081,7 +844,7 @@ class VirtualRoomEngine {
       return true;
     }
 
-        if (event === 'room:claim_admin') {
+    if (event === 'room:claim_admin') {
       const roomCode = (payload.roomCode as string) || this.activeRoomCode;
       if (!roomCode) return true;
       const state = this.getStoredRoom(roomCode) || this.currentRoomState;
@@ -1099,7 +862,7 @@ class VirtualRoomEngine {
       return true;
     }
 
-if (event === 'room:make_admin') {
+    if (event === 'room:make_admin') {
       const roomCode = (payload.roomCode as string) || this.activeRoomCode;
       const targetUserId = payload.targetUserId as string;
       if (!roomCode || !targetUserId) return true;

@@ -74,21 +74,6 @@ export function MusicRoomPage({
     }
   };
 
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable || target.getAttribute('role') === 'textbox')) {
-        return;
-      }
-      if (e.code === 'Space' || e.key === ' ') {
-        e.preventDefault();
-        handleTogglePlay();
-      }
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [track, canControl, isPlaying, room.roomCode]);
-
   const player = useMediaPlayer({
     track,
     playback: room.playback,

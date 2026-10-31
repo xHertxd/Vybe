@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import {
   ExternalLink,
   Loader2,
@@ -105,12 +105,22 @@ export function NowPlayingCard({
     }
   };
 
+  const track = room.playback.currentTrack;
+  const isPlaying = room.playback.status === 'playing';
+
+  const emit = useCallback(
+    (event: string, payload: Record<string, unknown> = {}) => {
+      socket.emit(event, { roomCode: room.roomCode, ...payload });
+    },
+    [room.roomCode]
+  );
+
   const canControl =
     isAdmin ||
     room.settings.playbackControl === 'anyone' ||
     !room.users.some((u) => u.isAdmin && u.isOnline);
 
-  const handleMainPlay = () => {
+  const handleMainPlay = useCallback(() => {
     if (!track) return;
 
     // 1. Direct synchronous activation inside user click gesture!
@@ -133,7 +143,7 @@ export function NowPlayingCard({
         notify?.('Locked in Sync', 'Your device is locked to room playback.', 'success');
       }
     }
-  };
+  }, [track, canControl, isPlaying, player, notify, room.roomCode]);
 
   // Immediate Spacebar play/pause listener
   useEffect(() => {
@@ -173,17 +183,11 @@ export function NowPlayingCard({
   };
 
   const [scrub, setScrub] = useState<number | null>(null);
-  const track = room.playback.currentTrack;
-  const isPlaying = room.playback.status === 'playing';
   const duration = player.duration || track?.duration || 0;
   const displayTime = scrub ?? player.currentTime;
   const progress = duration > 0 ? Math.min(100, (displayTime / duration) * 100) : 0;
   const drift = Math.abs(player.driftMs);
   const inSync = drift < 250;
-
-  const emit = (event: string, payload: Record<string, unknown> = {}) => {
-    socket.emit(event, { roomCode: room.roomCode, ...payload });
-  };
 
   const cycleRepeat = () => {
     const next =
@@ -598,19 +602,19 @@ export function NowPlayingCard({
           max={Math.max(duration, 0.1)}
           step={0.1}
           value={Math.min(displayTime, Math.max(duration, 0.1))}
-          disabled={!track || duration <= 0}
+          disabled={!track || duration <= 0 || !canControl}
           onChange={(event) => {
-            if (!isAdmin) return;
+            if (!canControl) return;
             setScrub(Number(event.target.value));
           }}
           onPointerUp={() => {
-            if (scrub !== null) {
+            if (scrub !== null && canControl) {
               emit('playback:seek', { position: scrub });
               setScrub(null);
             }
           }}
           onKeyUp={() => {
-            if (scrub !== null) {
+            if (scrub !== null && canControl) {
               emit('playback:seek', { position: scrub });
               setScrub(null);
             }

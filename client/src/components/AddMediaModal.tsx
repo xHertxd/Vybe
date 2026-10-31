@@ -62,6 +62,12 @@ export function AddMediaModal({ open, onClose, notify }: AddMediaModalProps) {
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
+    return () => {
+      if (searchTimer.current) clearTimeout(searchTimer.current);
+    };
+  }, []);
+
+  useEffect(() => {
     if (open) {
       void fetchTrendingTracks(20).then((tracks) => {
         if (tracks.length > 0 && !searchQuery) {

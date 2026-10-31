@@ -75,6 +75,12 @@ export function InlineSearch({ notify }: InlineSearchProps) {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  useEffect(() => {
+    return () => {
+      if (searchTimeout.current) clearTimeout(searchTimeout.current);
+    };
+  }, []);
+
   const handleSearchChange = (text: string) => {
     setQuery(text);
     setActiveVibe('');
