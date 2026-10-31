@@ -25,9 +25,7 @@ const USERNAME_RE = /^[A-Za-z]{2,20}$/;
 
 function unlockAudio(): void {
   try {
-    const AudioContextClass =
-      window.AudioContext ||
-      (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
     if (AudioContextClass) {
       const ctx = new AudioContextClass();
       const buf = ctx.createBuffer(1, 1, 22050);
@@ -49,20 +47,15 @@ export function RoomEntryPage({
   initialUsername,
   initialCode,
 }: RoomEntryPageProps) {
-  const [username, setUsername] = useState<string>(() => {
-    return initialUsername && USERNAME_RE.test(initialUsername)
-      ? initialUsername
-      : generateRandomUsername();
-  });
+  const [username, setUsername] = useState<string>(() =>
+    initialUsername && USERNAME_RE.test(initialUsername) ? initialUsername : generateRandomUsername()
+  );
 
   const [isEditingUsername, setIsEditingUsername] = useState(false);
   const [tempUsername, setTempUsername] = useState(username);
-  const [digits, setDigits] = useState<string[]>(() => {
-    if (initialCode && /^\d{6}$/.test(initialCode)) {
-      return initialCode.split('');
-    }
-    return ['', '', '', '', '', ''];
-  });
+  const [digits, setDigits] = useState<string[]>(() =>
+    initialCode && /^\d{6}$/.test(initialCode) ? initialCode.split('') : ['', '', '', '', '', '']
+  );
   const [error, setError] = useState<string | null>(null);
   const [isAutoSubmitting, setIsAutoSubmitting] = useState(false);
 
@@ -82,19 +75,14 @@ export function RoomEntryPage({
     if (initialCode && /^\d{6}$/.test(initialCode) && !autoJoinTriggered.current) {
       autoJoinTriggered.current = true;
       setDigits(initialCode.split(''));
-      const timer = setTimeout(() => {
-        submitJoin(initialCode, username);
-      }, 180);
+      const timer = setTimeout(() => submitJoin(initialCode, username), 180);
       return () => clearTimeout(timer);
     }
   }, [initialCode, username]);
 
   const handleSaveUsername = () => {
     const clean = tempUsername.trim();
-    if (!USERNAME_RE.test(clean)) {
-      setError('Username must be 2–20 letters only (A–Z).');
-      return;
-    }
+    if (!USERNAME_RE.test(clean)) { setError('Username must be 2–20 letters only (A–Z).'); return; }
     setUsername(clean);
     setIsEditingUsername(false);
     setError(null);
@@ -102,9 +90,7 @@ export function RoomEntryPage({
 
   const handleShuffleUsername = () => {
     let next = generateRandomUsername();
-    while (next === username) {
-      next = generateRandomUsername();
-    }
+    while (next === username) next = generateRandomUsername();
     setUsername(next);
     setTempUsername(next);
     setError(null);
@@ -117,45 +103,28 @@ export function RoomEntryPage({
       const newDigits = [...digits];
       newDigits[index] = numeric;
       setDigits(newDigits);
-      if (numeric && index < 5) {
-        inputRefs.current[index + 1]?.focus();
-      }
+      if (numeric && index < 5) inputRefs.current[index + 1]?.focus();
       const fullCode = newDigits.join('');
       if (fullCode.length === 6 && /^\d{6}$/.test(fullCode)) {
-        setTimeout(() => {
-          submitJoin(fullCode, username);
-        }, 60);
+        setTimeout(() => submitJoin(fullCode, username), 60);
       }
     }
   };
 
   const handleKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Backspace' && !digits[index] && index > 0) {
-      inputRefs.current[index - 1]?.focus();
-    } else if (e.key === 'ArrowLeft' && index > 0) {
-      inputRefs.current[index - 1]?.focus();
-    } else if (e.key === 'ArrowRight' && index < 5) {
-      inputRefs.current[index + 1]?.focus();
-    }
+    if (e.key === 'Backspace' && !digits[index] && index > 0) inputRefs.current[index - 1]?.focus();
+    else if (e.key === 'ArrowLeft' && index > 0) inputRefs.current[index - 1]?.focus();
+    else if (e.key === 'ArrowRight' && index < 5) inputRefs.current[index + 1]?.focus();
   };
 
   const handlePaste = (e: React.ClipboardEvent) => {
     e.preventDefault();
     const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
     if (pasted.length > 0) {
-      const newDigits = [...digits];
-      for (let i = 0; i < 6; i++) {
-        newDigits[i] = pasted[i] || '';
-      }
+      const newDigits = digits.map((_, i) => pasted[i] || '');
       setDigits(newDigits);
-      if (pasted.length === 6) {
-        setTimeout(() => {
-          submitJoin(pasted, username);
-        }, 60);
-      } else {
-        const nextIndex = Math.min(5, pasted.length);
-        inputRefs.current[nextIndex]?.focus();
-      }
+      if (pasted.length === 6) setTimeout(() => submitJoin(pasted, username), 60);
+      else inputRefs.current[Math.min(5, pasted.length)]?.focus();
     }
   };
 
@@ -163,19 +132,12 @@ export function RoomEntryPage({
     unlockAudio();
     setError(null);
     const clean = username.trim();
-    if (!USERNAME_RE.test(clean)) {
-      setError('Username must be 2–20 letters only.');
-      setIsEditingUsername(true);
-      return;
-    }
+    if (!USERNAME_RE.test(clean)) { setError('Username must be 2–20 letters only.'); setIsEditingUsername(true); return; }
     onCreate(clean);
   };
 
   const handleJoinManual = () => {
-    if (!isFullCode) {
-      setError('Please enter all 6 digits of the room code.');
-      return;
-    }
+    if (!isFullCode) { setError('Please enter all 6 digits of the room code.'); return; }
     submitJoin(currentCode, username);
   };
 
@@ -186,9 +148,7 @@ export function RoomEntryPage({
       <header className="w-full max-w-6xl mx-auto flex items-center justify-between z-10 mb-8">
         <div className="flex items-center gap-2.5 px-4 py-3 rounded-xl bg-white/3 backdrop-blur border border-white/5">
           <Logo size={32} withBackground={true} />
-          <span className="font-brand font-black text-2xl sm:text-3xl tracking-tight text-[#fde5b7]">
-            VYBE
-          </span>
+          <span className="font-brand font-black text-2xl sm:text-3xl tracking-tight text-[#fde5b7]">VYBE</span>
         </div>
       </header>
 
@@ -198,13 +158,8 @@ export function RoomEntryPage({
             {digits.map((digit, idx) => (
               <input
                 key={idx}
-                ref={(el) => {
-                  inputRefs.current[idx] = el;
-                }}
-                type="text"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                maxLength={1}
+                ref={(el) => { inputRefs.current[idx] = el; }}
+                type="text" inputMode="numeric" pattern="[0-9]*" maxLength={1}
                 value={digit}
                 onChange={(e) => handleDigitChange(idx, e.target.value)}
                 onKeyDown={(e) => handleKeyDown(idx, e)}
@@ -219,51 +174,29 @@ export function RoomEntryPage({
             {isEditingUsername ? (
               <div className="flex items-center gap-1.5 surface px-3 py-1.5 rounded-xl border border-[#fde5b7]/20">
                 <input
-                  type="text"
-                  autoFocus
-                  value={tempUsername}
-                  onChange={(e) => {
-                    const clean = e.target.value.replace(/[^a-zA-Z]/g, '');
-                    setTempUsername(clean);
-                    setError(null);
-                  }}
+                  type="text" autoFocus value={tempUsername}
+                  onChange={(e) => { setTempUsername(e.target.value.replace(/[^a-zA-Z]/g, '')); setError(null); }}
                   onKeyDown={(e) => e.key === 'Enter' && handleSaveUsername()}
                   className="bg-transparent text-[#fde5b7] font-semibold text-sm sm:text-base focus:outline-none w-28 text-center"
-                  placeholder="name"
-                  maxLength={18}
+                  placeholder="name" maxLength={18}
                 />
-                <button
-                  type="button"
-                  onClick={handleSaveUsername}
-                  className="p-1 text-[#40E0D0] hover:text-white transition-colors"
-                  title="Save Username"
-                >
+                <button type="button" onClick={handleSaveUsername} className="p-1 text-[#40E0D0] hover:text-white transition-colors" title="Save Username">
                   <Check className="w-4 h-4" />
                 </button>
               </div>
             ) : (
               <div className="flex items-center gap-2">
                 <button
-                  type="button"
-                  onClick={() => {
-                    setTempUsername(username);
-                    setIsEditingUsername(true);
-                  }}
+                  type="button" onClick={() => { setTempUsername(username); setIsEditingUsername(true); }}
                   className="group flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/3 hover:bg-white/5 border border-white/5 backdrop-blur transition-all cursor-pointer"
                   title="Click to edit username"
                 >
-                  <span className="font-semibold text-[#fde5b7] group-hover:text-white transition-colors">
-                    {username}
-                  </span>
+                  <span className="font-semibold text-[#fde5b7] group-hover:text-white transition-colors">{username}</span>
                   <Pencil className="w-3.5 h-3.5 text-[#40E0D0] opacity-80 group-hover:opacity-100 group-hover:scale-110 transition-all" />
                 </button>
-
-                <button
-                  type="button"
-                  onClick={handleShuffleUsername}
+                <button type="button" onClick={handleShuffleUsername}
                   className="p-1.5 rounded-full bg-white/3 hover:bg-white/5 border border-white/5 text-[#a8a29e] hover:text-[#40E0D0] transition-colors"
-                  title="Roll another random name"
-                >
+                  title="Roll another random name">
                   <Shuffle className="w-3.5 h-3.5" />
                 </button>
               </div>
@@ -279,39 +212,22 @@ export function RoomEntryPage({
 
           {isFullCode ? (
             <div className="w-full space-y-3 flex flex-col items-center">
-              <button
-                type="button"
-                onClick={handleJoinManual}
-                disabled={isAutoSubmitting}
-                className="w-full py-3.5 px-8 rounded-full bg-gradient-to-b from-[#252528] to-[#1c1c1f] hover:from-[#2e2e33] hover:to-[#222226] active:scale-[0.98] text-[#fde5b7] font-bebas text-2xl sm:text-3xl tracking-widest transition-all shadow-[0_8px_24px_rgba(0,0,0,0.4)] border border-white/5 flex items-center justify-center gap-2 hover:border-[#40E0D0]/30 disabled:opacity-60"
-              >
+              <button type="button" onClick={handleJoinManual} disabled={isAutoSubmitting}
+                className="w-full py-3.5 px-8 rounded-full bg-gradient-to-b from-[#252528] to-[#1c1c1f] hover:from-[#2e2e33] hover:to-[#222226] active:scale-[0.98] text-[#fde5b7] font-bebas text-2xl sm:text-3xl tracking-widest transition-all shadow-[0_8px_24px_rgba(0,0,0,0.4)] border border-white/5 flex items-center justify-center gap-2 hover:border-[#40E0D0]/30 disabled:opacity-60">
                 {isAutoSubmitting ? (
-                  <>
-                    <Loader2 className="w-5 h-5 text-[#40E0D0] animate-spin" />
-                    <span>ENTERING ROOM…</span>
-                  </>
+                  <> <Loader2 className="w-5 h-5 text-[#40E0D0] animate-spin" /> <span>ENTERING ROOM…</span> </>
                 ) : (
-                  <>
-                    <span>JOIN ROOM</span>
-                    <ArrowRight className="w-5 h-5 text-[#fde5b7]" />
-                  </>
+                  <> <span>JOIN ROOM</span> <ArrowRight className="w-5 h-5 text-[#fde5b7]" /> </>
                 )}
               </button>
-
-              <button
-                type="button"
-                onClick={handleCreate}
-                className="text-xs text-[#a8a29e] hover:text-[#fde5b7] underline underline-offset-4 font-medium transition-colors"
-              >
+              <button type="button" onClick={handleCreate}
+                className="text-xs text-[#a8a29e] hover:text-[#fde5b7] underline underline-offset-4 font-medium transition-colors">
                 or create a new room instead
               </button>
             </div>
           ) : (
-            <button
-              type="button"
-              onClick={handleCreate}
-              className="w-full py-3.5 px-8 rounded-full bg-[#fde5b7] hover:bg-[#fee8c8] active:scale-[0.98] text-[#141416] font-bebas text-2xl sm:text-3xl tracking-widest transition-all shadow-[0_8px_24px_rgba(253,229,183,0.2)] flex items-center justify-center gap-2"
-            >
+            <button type="button" onClick={handleCreate}
+              className="w-full py-3.5 px-8 rounded-full bg-[#fde5b7] hover:bg-[#fee8c8] active:scale-[0.98] text-[#141416] font-bebas text-2xl sm:text-3xl tracking-widest transition-all shadow-[0_8px_24px_rgba(253,229,183,0.2)] flex items-center justify-center gap-2">
               <Sparkles className="w-5 h-5 text-[#141416]" />
               <span>CREATE NEW ROOM</span>
             </button>
