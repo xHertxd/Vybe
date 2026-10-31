@@ -6,12 +6,12 @@ import { spotifyDevice } from '../services/spotify.js';
 import {
   HowlerAudioAdapter,
   SpotifyAdapter,
-  YouTubeAdapter,
   createYouTubeAdapter,
   type PlayerAdapter,
 } from '../services/players.js';
 import { positionAt, waitUntilStart } from '../lib/playback.js';
 import { audioUnlocker } from '../services/audioUnlocker.js';
+import { createMasterSync, type MasterSync } from '../services/masterSync.js';
 
 type PlayerPhase = 'idle' | 'loading' | 'ready' | 'needs-interaction' | 'needs-spotify' | 'error';
 
@@ -49,12 +49,21 @@ export function useMediaPlayer({
   const adapterRef = useRef<PlayerAdapter | null>(null);
   const outgoingAdapterRef = useRef<PlayerAdapter | null>(null);
   const outgoingFadeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const masterSyncRef = useRef<MasterSync | null>(null);
   const [adapterTick, setAdapterTick] = useState(0);
   const [phase, setPhase] = useState<PlayerPhase>('idle');
   const [error, setError] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
   const [measuredDuration, setMeasuredDuration] = useState(0);
   const [driftMs, setDriftMs] = useState(0);
+
+  // Initialize MasterSync on mount
+  useEffect(() => {
+    masterSyncRef.current = createMasterSync();
+    return () => {
+      masterSyncRef.current?.destroy();
+    };
+  }, []);
 
   const playbackRef = useRef(playback);
   playbackRef.current = playback;
@@ -153,6 +162,8 @@ export function useMediaPlayer({
         adapter.seek(target > 0 ? target : initialSeek);
       }
       if (isPlaying) {
+        // Notify MasterSync of playback start for PLL phase reference
+        masterSyncRef.current?.onPlayStart(target);
         adapter.setRate(1);
         if (wait > 40) {
           adapter.pause();
@@ -337,6 +348,10 @@ export function useMediaPlayer({
         } else {
           // Status is paused or stopped
           activeAdapter.pause();
+          masterSyncRef.current?.onPause();
+          if (playback.status === 'stopped') {
+            masterSyncRef.current?.onStop();
+          }
           if (Math.abs(activeAdapter.getTime() - target) > 0.1) {
             activeAdapter.seek(target);
             lastSeekTime.current = Date.now();
@@ -367,6 +382,9 @@ export function useMediaPlayer({
       activeAdapter.setRate(1);
       setCurrentTime(target);
 
+      // Update MasterSync with forced position
+      masterSyncRef.current?.forceSeek(target);
+
       if (playbackRef.current.status === 'playing') {
         const isPlaying = activeAdapter.isPlaying ? activeAdapter.isPlaying() : false;
         if (!isPlaying) {
@@ -381,10 +399,18 @@ export function useMediaPlayer({
     };
   }, []);
 
-  // Continuous micro-drift detection + instant alignment (BeatSync engine)
+  // Continuous micro-drift detection + instant alignment (Phase-Locked Loop engine)
   useEffect(() => {
     if (!track) return;
     let disposed = false;
+
+    // Initialize MasterSync callbacks when adapter is ready
+    const masterSync = masterSyncRef.current;
+    if (masterSync) {
+      masterSync.setCallbacks(
+        (targetTime) => adapterRef.current?.seek(targetTime)
+      );
+    }
 
     const interval = window.setInterval(() => {
       const adapter = adapterRef.current;
@@ -392,6 +418,7 @@ export function useMediaPlayer({
       if (!adapter || !adapter.isReady() || disposed) return;
 
       if (active.status !== 'playing') {
+        masterSync?.onPause();
         setDriftMs(0);
         setCurrentTime(adapter.getTime());
         return;
@@ -410,13 +437,23 @@ export function useMediaPlayer({
 
       void readPosition().then((position) => {
         if (disposed) return;
-        const target = positionAt(active, clockSync.getServerNow());
-        const rawDrift = position - target;
+        
+        if (!masterSync) return;
+        
+        // Run PLL update - returns rate adjustment and seek decision
+        const { rate, shouldSeek, seekTarget } = masterSync.update(position);
+        
+        // Apply rate adjustment from PLL
+        adapter.setRate(rate);
+        
+        // Hard seek if PLL determines phase error is too large
+        if (shouldSeek && seekTarget !== undefined) {
+          masterSync.forceSeek(seekTarget);
+          lastSeekTime.current = Date.now();
+        }
 
-        // Exponential smoothing filter:
-        // Dampens OS audio clock buffer fluctuations (~20-50ms) to eliminate rate oscillation/flutter.
-        smoothedDrift.current = 0.7 * smoothedDrift.current + 0.3 * rawDrift;
-        const drift = Math.abs(rawDrift) > 0.8 ? rawDrift : smoothedDrift.current;
+        const target = positionAt(active, clockSync.getServerNow());
+        const drift = position - target;
         const driftMillis = Math.round(drift * 1000);
         setCurrentTime(position);
         setDriftMs(driftMillis);
@@ -438,129 +475,14 @@ export function useMediaPlayer({
           }
           return;
         }
-
-        const absDrift = Math.abs(drift);
-        const isYouTube = adapter instanceof YouTubeAdapter;
-        const timeSinceLastSeek = Date.now() - lastSeekTime.current;
-
-        if (isYouTube) {
-          // YouTube: Only hard seek on massive desync (> 1.5s) to prevent video buffer freezing
-          if (absDrift > 1.5 && timeSinceLastSeek > 4000) {
-            adapter.seek(target);
-            lastSeekTime.current = Date.now();
-            adapter.setRate(1);
-          } else if (absDrift > 0.12) {
-            // Gentle 3% rate correction for smooth catch-up without frame drops
-            adapter.setRate(drift < 0 ? 1.03 : 0.97);
-          } else {
-            adapter.setRate(1);
-          }
-        } else {
-          // Howler Audio / HTML5 Audio:
-          // Never hard seek unless drift > 1.2s and sustained (prevents audio hitching/stuttering)
-          if (absDrift > 1.2 && timeSinceLastSeek > 3000) {
-            adapter.seek(target);
-            lastSeekTime.current = Date.now();
-            adapter.setRate(1);
-          } else if (absDrift > 0.25) {
-            // Moderate drift (250ms - 1.2s): 3% catch-up rate (smooth, natural, pitch-preserved)
-            adapter.setRate(drift < 0 ? 1.03 : 0.97);
-          } else if (absDrift > 0.075) {
-            // Micro drift (75ms - 250ms): 1.5% micro-trim (virtually imperceptible)
-            adapter.setRate(drift < 0 ? 1.015 : 0.985);
-          } else {
-            // Within 75ms: perfect sweet spot, locked at 1.0x with zero rate modulation
-            adapter.setRate(1);
-          }
-        }
-
-        // Keep mobile lockscreen position state up-to-date
-        if (
-          Math.random() < 0.15 &&
-          typeof navigator !== 'undefined' &&
-          'mediaSession' in navigator &&
-          'setPositionState' in navigator.mediaSession &&
-          duration > 0
-        ) {
-          try {
-            navigator.mediaSession.setPositionState({
-              duration: Math.max(0, duration),
-              playbackRate: 1,
-              position: Math.min(Math.max(0, position), duration),
-            });
-          } catch {}
-        }
-
-        if (adapter.isPlaying && !adapter.isPlaying()) {
-          notPlayingTicks.current += 1;
-          // Wait at least 6s (24 ticks) for mobile buffering, and only prompt if never interacted
-          if (notPlayingTicks.current >= 24 && !audioUnlocker.isUnlocked()) {
-            setPhase('needs-interaction');
-            try {
-              void Promise.resolve(adapter.play());
-            } catch {}
-          }
-        } else {
-          notPlayingTicks.current = 0;
-          if (phase === 'needs-interaction') {
-            setPhase('ready');
-          }
-        }
-
-        if (
-          track.provider === 'youtube' &&
-          adapter instanceof YouTubeAdapter &&
-          reportedDuration.current !== track.id
-        ) {
-          const measured = Math.round(adapter.getDuration());
-          if (measured > 5) {
-            reportedDuration.current = track.id;
-            setMeasuredDuration(measured);
-            if (Math.abs(measured - (track.duration || 0)) > 2) {
-              socket.emit('media:duration', {
-                roomCode,
-                itemId: track.id,
-                duration: measured,
-              });
-            }
-          }
-        }
-
-        if (
-          track.provider === 'audio' &&
-          adapter instanceof HowlerAudioAdapter &&
-          reportedDuration.current !== track.id
-        ) {
-          const measured = Math.round(adapter.getDuration());
-          if (measured > 1) {
-            reportedDuration.current = track.id;
-            setMeasuredDuration(measured);
-            if (track.duration <= 0 || Math.abs(measured - (track.duration || 0)) > 2) {
-              socket.emit('media:duration', {
-                roomCode,
-                itemId: track.id,
-                duration: measured,
-              });
-            }
-          }
-        }
-
-        if (Math.random() < 0.2) {
-          const metrics = clockSync.getMetrics();
-          socket.emit('playback:drift_report', {
-            roomCode,
-            drift: Math.abs(driftMillis),
-            ping: Math.round(metrics.rtt / 2),
-          });
-        }
       });
-    }, 250);
+    }, 250); // 4Hz update rate for PLL
 
     return () => {
       disposed = true;
       window.clearInterval(interval);
     };
-  }, [roomCode, track, phase]);
+  }, [roomCode, track, crossfade, volume]);
 
   // MediaSession API keeps audio alive on iOS & Android in background/lockscreen.
   useEffect(() => {
