@@ -124,3 +124,27 @@ export async function fetchCategoryTracks(categoryId: string, limit = 20): Promi
     return [];
   }
 }
+
+/**
+ * Fetch uploaded tracks from the server.
+ */
+export async function fetchUploadedTracks(limit = 20): Promise<MediaItemInput[]> {
+  const cacheKey = `ftu:uploads:${limit}`;
+  const cached = getCached<MediaItemInput[]>(cacheKey);
+  if (cached) return cached;
+
+  try {
+    const url = getApiUrl(`/api/library/uploads?limit=${limit}`);
+    const res = await fetch(url, { signal: AbortSignal.timeout(6000) });
+    if (!res.ok) return [];
+
+    const json = (await res.json()) as { success?: boolean; tracks?: MediaItemInput[] };
+    if (!json.success || !Array.isArray(json.tracks)) return [];
+
+    setCached(cacheKey, json.tracks, 5 * 60 * 1000);
+    return json.tracks;
+  } catch (err) {
+    console.warn('Failed to fetch uploaded tracks:', err);
+    return [];
+  }
+}

@@ -646,6 +646,16 @@ export function NowPlayingCard({
           </button>
           <button
             type="button"
+            onClick={() => emit('playback:seek', { position: Math.max(0, displayTime - 15) })}
+            disabled={!canControl || !track}
+            className="icon-btn"
+            title={canControl ? 'Seek back 15s' : 'Playback control is host-only'}
+            aria-label="Seek back 15s"
+          >
+            <span className="text-xs font-bold">-15s</span>
+          </button>
+          <button
+            type="button"
             onClick={() => emit('playback:prev')}
             disabled={!canControl || !track}
             className="icon-btn"
@@ -684,6 +694,16 @@ export function NowPlayingCard({
         </button>
 
         <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => emit('playback:seek', { position: Math.min(duration, displayTime + 15) })}
+            disabled={!canControl || !track}
+            className="icon-btn"
+            title={canControl ? 'Seek forward 15s' : 'Playback control is host-only'}
+            aria-label="Seek forward 15s"
+          >
+            <span className="text-xs font-bold">+15s</span>
+          </button>
           <button
             type="button"
             onClick={() => emit('playback:next')}

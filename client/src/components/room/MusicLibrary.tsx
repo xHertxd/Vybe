@@ -21,6 +21,7 @@ interface MusicLibraryProps {
 
 const VIBE_CATEGORIES = [
   { id: 'trending', label: 'Trending', icon: Zap },
+  { id: 'uploads', label: 'My Uploads', icon: Music2 },
   { id: 'chill', label: 'Chill', icon: Radio },
   { id: 'electronic', label: 'Electronic', icon: Sparkles },
   { id: 'ambient', label: 'Ambient', icon: Heart },

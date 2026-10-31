@@ -140,6 +140,9 @@ export function createVybeServer() {
   fs.mkdirSync(uploadsDir, { recursive: true });
   app.use('/uploads', express.static(uploadsDir, { maxAge: '1h' }));
 
+  // In-memory store for uploaded tracks (persists across uploads in same process)
+  const uploadedTracks = new Map<string, MediaItemInput>();
+
   const upload = multer({
     storage: multer.diskStorage({
       destination: (_req, _file, cb) => cb(null, uploadsDir),
@@ -173,7 +176,9 @@ export function createVybeServer() {
 
       if (!q) {
         const trending = await freeToUseService.getTrending(limit);
-        res.json({ success: true, results: trending });
+        // Also include uploaded tracks in trending
+        const uploaded = Array.from(uploadedTracks.values());
+        res.json({ success: true, results: [...trending, ...uploaded] });
         return;
       }
 
@@ -183,8 +188,14 @@ export function createVybeServer() {
       // Search YouTube concurrently for mainstream pop/video coverage
       const youtubeResults = await searchYouTubeTracks(q).catch(() => []);
 
-      // Deduplicate and combine (FreeToUse direct audio tracks prioritized first!)
-      const combined = [...freeToUseResults, ...youtubeResults];
+      // Search uploaded tracks
+      const uploadedResults = Array.from(uploadedTracks.values()).filter(t =>
+        t.title.toLowerCase().includes(q.toLowerCase()) ||
+        t.artist.toLowerCase().includes(q.toLowerCase())
+      );
+
+      // Deduplicate and combine (FreeToUse direct audio tracks prioritized first, then uploads, then YouTube)
+      const combined = [...freeToUseResults, ...uploadedResults, ...youtubeResults];
       res.json({ success: true, results: combined.slice(0, limit) });
     } catch {
       res.json({ success: true, results: [] });
@@ -275,12 +286,36 @@ export function createVybeServer() {
 
     const publicPath = `/uploads/${req.file.filename}`;
     const item = mediaResolver.resolveUploadedFile(req.file.originalname, publicPath);
+    
+    // Store for searchability
+    uploadedTracks.set(item.mediaId, item);
 
     res.json({
       success: true,
       fileUrl: publicPath,
       item,
     });
+  });
+
+  // Search uploaded tracks
+  app.get('/api/library/uploads', async (req, res) => {
+    try {
+      const q = typeof req.query.q === 'string' ? req.query.q.trim().toLowerCase() : '';
+      const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 20));
+      
+      let results = Array.from(uploadedTracks.values());
+      
+      if (q) {
+        results = results.filter(t => 
+          t.title.toLowerCase().includes(q) || 
+          t.artist.toLowerCase().includes(q)
+        );
+      }
+      
+      res.json({ success: true, tracks: results.slice(0, limit) });
+    } catch {
+      res.json({ success: true, tracks: [] });
+    }
   });
 
   app.use(

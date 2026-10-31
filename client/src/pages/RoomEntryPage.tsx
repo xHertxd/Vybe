@@ -10,15 +10,32 @@ interface RoomEntryPageProps {
   initialCode?: string;
 }
 
-const RANDOM_NAMES = [
-  'Nova', 'Zephyr', 'Solaris', 'Aura', 'Vesper', 'Zenith', 'Cosmo', 'Lyric',
-  'Rhythm', 'Pulse', 'Astral', 'Blaze', 'Echo', 'Mirage', 'Apex', 'Haven',
-  'Helix', 'Orbit', 'Solstice', 'Vortex', 'Prism', 'Flux', 'Nexus', 'Siren',
-  'Phantom', 'Kismet', 'Drift', 'Sonic',
+// Word pairs for generating unique usernames
+const ADJECTIVES = [
+  'Midnight', 'Solar', 'Lunar', 'Cosmic', 'Neon', 'Electric', 'Velvet', 'Silent',
+  'Wild', 'Calm', 'Bold', 'Swift', 'Deep', 'High', 'Low', 'Fast',
+  'Slow', 'Bright', 'Dark', 'Cool', 'Warm', 'Fresh', 'Raw', 'Pure',
+  'Magic', 'Epic', 'Vibe', 'Flow', 'Wave', 'Beat', 'Pulse', 'Rhythm',
+  'Soul', 'Mind', 'Dream', 'Hope', 'Joy', 'Peace', 'Zen', 'Aura',
+  'Nova', 'Star', 'Moon', 'Sky', 'Sea', 'Fire', 'Ice', 'Wind',
+  'Storm', 'Rain', 'Snow', 'Dawn', 'Dusk', 'Twilight', 'Shadow', 'Light',
 ];
 
-function generateRandomUsername(): string {
-  return RANDOM_NAMES[Math.floor(Math.random() * RANDOM_NAMES.length)];
+const NOUNS = [
+  'Echo', 'Pulse', 'Wave', 'Beat', 'Flow', 'Vibe', 'Rhythm', 'Soul',
+  'Dream', 'Spark', 'Flare', 'Ray', 'Nova', 'Star', 'Moon', 'Sky',
+  'Drift', 'Shift', 'Glide', 'Slide', 'Ride', 'Tide', 'Guide', 'Slide',
+  'Force', 'Power', 'Energy', 'Motion', 'Action', 'Reaction', 'Vision', 'Mission',
+  'Journey', 'Quest', 'Path', 'Way', 'Road', 'Track', 'Trail', 'Rail',
+  'Sound', 'Tone', 'Note', 'Chord', 'Harmony', 'Melody', 'Song', 'Tune',
+  'Bass', 'Treble', 'Drop', 'Lift', 'Rise', 'Fall', 'Peak', 'Valley',
+  'Horizon', 'Summit', 'Crest', 'Edge', 'Border', 'Limit', 'Beyond', 'Infinite',
+];
+
+function generateUsername(): string {
+  const adj = ADJECTIVES[Math.floor(Math.random() * ADJECTIVES.length)];
+  const noun = NOUNS[Math.floor(Math.random() * NOUNS.length)];
+  return `${adj}${noun}`;
 }
 
 const USERNAME_RE = /^[A-Za-z]{2,20}$/;
@@ -48,7 +65,7 @@ export function RoomEntryPage({
   initialCode,
 }: RoomEntryPageProps) {
   const [username, setUsername] = useState<string>(() =>
-    initialUsername && USERNAME_RE.test(initialUsername) ? initialUsername : generateRandomUsername()
+    initialUsername && USERNAME_RE.test(initialUsername) ? initialUsername : generateUsername()
   );
 
   const [isEditingUsername, setIsEditingUsername] = useState(false);
@@ -89,8 +106,8 @@ export function RoomEntryPage({
   };
 
   const handleShuffleUsername = () => {
-    let next = generateRandomUsername();
-    while (next === username) next = generateRandomUsername();
+    let next = generateUsername();
+    while (next === username) next = generateUsername();
     setUsername(next);
     setTempUsername(next);
     setError(null);
@@ -142,19 +159,24 @@ export function RoomEntryPage({
   };
 
   return (
-    <div className="relative min-h-screen w-full flex flex-col justify-between overflow-hidden px-4 py-8">
-      <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(ellipse_at_center,rgba(253,229,183,0.03),transparent_70%)]" />
-
-      <header className="w-full max-w-6xl mx-auto flex items-center justify-between z-10 mb-8">
-        <div className="flex items-center gap-2.5 px-4 py-3 rounded-xl bg-white/3 backdrop-blur border border-white/5">
+    <div className="relative min-h-screen w-full flex flex-col justify-between overflow-hidden px-4 py-10">
+      <header className="w-full max-w-6xl mx-auto flex items-center justify-between z-10 mb-10">
+        <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-white/[0.02] backdrop-blur border border-white/5">
           <Logo size={32} withBackground={true} />
-          <span className="font-brand font-black text-2xl sm:text-3xl tracking-tight text-[#fde5b7]">VYBE</span>
+          <span className="font-display font-bold text-2xl sm:text-3xl tracking-tight text-white">Vybe</span>
         </div>
       </header>
 
-      <main className="w-full max-w-[460px] mx-auto flex-1 flex flex-col items-center my-auto">
+      <main className="w-full max-w-[440px] mx-auto flex-1 flex flex-col items-center my-auto">
         <div className="w-full surface rounded-2xl p-6 sm:p-8">
-          <div className="flex items-center justify-center gap-2 sm:gap-3.5 mb-8 w-full" onPaste={handlePaste}>
+          {/* Header */}
+          <div className="text-center mb-8">
+            <h1 className="font-display text-3xl font-bold text-white tracking-tight">Enter Room</h1>
+            <p className="mt-2 text-sm text-[#737373]">6-digit code to join a session</p>
+          </div>
+
+          {/* Code Input */}
+          <div className="flex items-center justify-center gap-2 sm:gap-3 mb-8 w-full" onPaste={handlePaste}>
             {digits.map((digit, idx) => (
               <input
                 key={idx}
@@ -164,47 +186,48 @@ export function RoomEntryPage({
                 onChange={(e) => handleDigitChange(idx, e.target.value)}
                 onKeyDown={(e) => handleKeyDown(idx, e)}
                 disabled={isAutoSubmitting}
-                className="w-11 h-14 sm:w-14 sm:h-16 md:w-15 md:h-17 bg-[#fde5b7] text-[#141416] font-brand font-black text-2xl sm:text-3xl md:text-4xl text-center rounded-xl focus:outline-none focus:ring-3 focus:ring-[#fde5b7]/40 transition-all caret-transparent select-none cursor-text disabled:opacity-75"
+                className="w-12 h-16 sm:w-14 sm:h-18 md:w-15 md:h-20 bg-white/[0.03] text-white font-display font-bold text-2xl sm:text-3xl md:text-4xl text-center rounded-xl focus:outline-none focus:ring-2 focus:ring-white/20 transition-all caret-transparent select-none cursor-text disabled:opacity-50 border border-white/5"
               />
             ))}
           </div>
 
-          <div className="flex items-center justify-center mb-8 text-[#fde5b7] text-sm sm:text-base font-medium">
-            <span className="opacity-60 mr-2">You will join as</span>
+          {/* Username */}
+          <div className="mb-8">
+            <label className="block text-xs font-medium text-[#737373] mb-2">Your Name</label>
             {isEditingUsername ? (
-              <div className="flex items-center gap-1.5 surface px-3 py-1.5 rounded-xl border border-[#fde5b7]/20">
+              <div className="flex items-center gap-2">
                 <input
                   type="text" autoFocus value={tempUsername}
                   onChange={(e) => { setTempUsername(e.target.value.replace(/[^a-zA-Z]/g, '')); setError(null); }}
                   onKeyDown={(e) => e.key === 'Enter' && handleSaveUsername()}
-                  className="bg-transparent text-[#fde5b7] font-semibold text-sm sm:text-base focus:outline-none w-28 text-center"
+                  className="flex-1 input text-center text-lg font-semibold"
                   placeholder="name" maxLength={18}
                 />
-                <button type="button" onClick={handleSaveUsername} className="p-1 text-[#40E0D0] hover:text-white transition-colors" title="Save Username">
+                <button type="button" onClick={handleSaveUsername} className="icon-btn bg-white text-black hover:bg-[#f3f4f6]" title="Save">
                   <Check className="w-4 h-4" />
                 </button>
               </div>
             ) : (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center justify-between">
                 <button
                   type="button" onClick={() => { setTempUsername(username); setIsEditingUsername(true); }}
-                  className="group flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/3 hover:bg-white/5 border border-white/5 backdrop-blur transition-all cursor-pointer"
+                  className="group flex items-center gap-2 px-4 py-2 rounded-xl bg-white/[0.02] hover:bg-white/[0.05] border border-white/5 transition-all cursor-pointer w-full text-left"
                   title="Click to edit username"
                 >
-                  <span className="font-semibold text-[#fde5b7] group-hover:text-white transition-colors">{username}</span>
-                  <Pencil className="w-3.5 h-3.5 text-[#40E0D0] opacity-80 group-hover:opacity-100 group-hover:scale-110 transition-all" />
+                  <span className="font-semibold text-white group-hover:text-[#e5e7eb] transition-colors">{username}</span>
+                  <Pencil className="w-4 h-4 text-[#737373] group-hover:text-white transition-all" />
                 </button>
                 <button type="button" onClick={handleShuffleUsername}
-                  className="p-1.5 rounded-full bg-white/3 hover:bg-white/5 border border-white/5 text-[#a8a29e] hover:text-[#40E0D0] transition-colors"
-                  title="Roll another random name">
-                  <Shuffle className="w-3.5 h-3.5" />
+                  className="icon-btn bg-white/[0.02] hover:bg-white/[0.05] border border-white/5 text-[#737373] hover:text-white transition-colors"
+                  title="Generate new name">
+                  <Shuffle className="w-4 h-4" />
                 </button>
               </div>
             )}
           </div>
 
           {error && (
-            <div className="w-full mb-6 p-3 rounded-xl bg-red-500/10 border border-red-500/20 flex items-start gap-2.5 text-xs text-red-200">
+            <div className="w-full mb-6 p-3 rounded-xl bg-red-500/10 border border-red-500/20 flex items-start gap-2.5 text-xs text-red-200 animate-slide-up">
               <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
               <div className="leading-relaxed">{error}</div>
             </div>
@@ -213,23 +236,23 @@ export function RoomEntryPage({
           {isFullCode ? (
             <div className="w-full space-y-3 flex flex-col items-center">
               <button type="button" onClick={handleJoinManual} disabled={isAutoSubmitting}
-                className="w-full py-3.5 px-8 rounded-full bg-gradient-to-b from-[#252528] to-[#1c1c1f] hover:from-[#2e2e33] hover:to-[#222226] active:scale-[0.98] text-[#fde5b7] font-bebas text-2xl sm:text-3xl tracking-widest transition-all shadow-[0_8px_24px_rgba(0,0,0,0.4)] border border-white/5 flex items-center justify-center gap-2 hover:border-[#40E0D0]/30 disabled:opacity-60">
+                className="w-full py-3.5 px-8 rounded-full bg-gradient-to-b from-[#1a1a1a] to-[#111111] hover:from-[#222222] hover:to-[#161616] active:scale-[0.98] text-white font-display text-xl sm:text-2xl tracking-widest transition-all border border-white/5 flex items-center justify-center gap-2 disabled:opacity-50">
                 {isAutoSubmitting ? (
-                  <> <Loader2 className="w-5 h-5 text-[#40E0D0] animate-spin" /> <span>ENTERING ROOM…</span> </>
+                  <> <Loader2 className="w-5 h-5 text-white animate-spin" /> <span>ENTERING…</span> </>
                 ) : (
-                  <> <span>JOIN ROOM</span> <ArrowRight className="w-5 h-5 text-[#fde5b7]" /> </>
+                  <> <span>JOIN ROOM</span> <ArrowRight className="w-5 h-5 text-white" /> </>
                 )}
               </button>
               <button type="button" onClick={handleCreate}
-                className="text-xs text-[#a8a29e] hover:text-[#fde5b7] underline underline-offset-4 font-medium transition-colors">
+                className="text-xs text-[#737373] hover:text-white underline underline-offset-4 font-medium transition-colors">
                 or create a new room instead
               </button>
             </div>
           ) : (
             <button type="button" onClick={handleCreate}
-              className="w-full py-3.5 px-8 rounded-full bg-[#fde5b7] hover:bg-[#fee8c8] active:scale-[0.98] text-[#141416] font-bebas text-2xl sm:text-3xl tracking-widest transition-all shadow-[0_8px_24px_rgba(253,229,183,0.2)] flex items-center justify-center gap-2">
-              <Sparkles className="w-5 h-5 text-[#141416]" />
-              <span>CREATE NEW ROOM</span>
+              className="w-full py-3.5 px-8 rounded-full bg-white text-black font-display text-xl sm:text-2xl tracking-widest transition-all hover:bg-[#f3f4f6] active:scale-[0.98] flex items-center justify-center gap-2">
+              <Sparkles className="w-5 h-5" />
+              <span>CREATE ROOM</span>
             </button>
           )}
         </div>
