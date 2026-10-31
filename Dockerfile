@@ -1,18 +1,15 @@
 # Multi-stage Dockerfile for Vybe Backend Server
+# syntax = docker/dockerfile:1.4
 FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Copy server package manifests directly to workdir (avoids workspace detection)
-COPY server/package.json ./
-COPY server/package-lock.json ./
+# Copy server directory (package files + source)
+COPY server/ ./server/
 
 # Install server dependencies
+WORKDIR /app/server
 RUN npm ci
-
-# Copy server source code
-COPY server/src ./src
-COPY server/tsconfig.json ./
 
 # Build TypeScript
 RUN npm run build
@@ -33,7 +30,7 @@ COPY server/package-lock.json ./
 RUN npm ci --omit=dev
 
 # Copy compiled files from builder stage
-COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/server/dist ./dist
 
 # Create uploads directory
 RUN mkdir -p /app/uploads
