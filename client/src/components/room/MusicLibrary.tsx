@@ -5,10 +5,10 @@ import {
 } from 'lucide-react';
 import { socket } from '../../services/socket.js';
 import {
-  searchFreeToUseTracks,
   fetchTrendingTracks,
   fetchCategoryTracks,
 } from '../../services/freeToUse.js';
+import { searchSongs, resolveDirectMedia } from '../../services/musicLibrary.js';
 import type { MediaItemInput } from '../../types.js';
 import { formatTime } from '../../lib/format.js';
 import { cn } from '../../lib/cn.js';
@@ -75,14 +75,28 @@ export function MusicLibrary({ isOpen, onClose, notify }: MusicLibraryProps) {
       return;
     }
 
-    searchTimeout.current = setTimeout(async () => {
-      try {
-        const songs = await searchFreeToUseTracks(clean, 30);
-        setResults(songs);
-      } catch {
-        setResults([]);
-      }
-    }, 300);
+    // If user pasted a direct link, resolve it immediately
+    if (/youtu\.?be|youtube\.com|spotify\.com|freetouse\.com/i.test(clean)) {
+      resolveDirectMedia(clean).then(track => {
+        setResults([track]);
+      }).catch(() => {
+        // Fall through to regular search
+        doSearch(clean);
+      });
+      return;
+    }
+
+    doSearch(clean);
+  };
+
+  const doSearch = async (clean: string) => {
+    try {
+      // Use backend search which combines FreeToUse + YouTube
+      const songs = await searchSongs(clean);
+      setResults(songs);
+    } catch {
+      setResults([]);
+    }
   };
 
   // Handle category selection

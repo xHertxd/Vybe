@@ -110,17 +110,22 @@ export function NowPlayingCard({
     room.settings.playbackControl === 'anyone' ||
     !room.users.some((u) => u.isAdmin && u.isOnline);
 
-  const handleMainPlay = async () => {
+  const handleMainPlay = () => {
     if (!track) return;
 
     // 1. Direct synchronous activation inside user click gesture!
-    try {
-      await player.activate();
-    } catch {}
+    // Don't await - keep play() in the same event loop tick for iOS Safari
+    void player.activate();
 
     // 2. Control room playback if user canControl, or confirm local sync
     if (canControl) {
-      emit(isPlaying ? 'playback:pause' : 'playback:play');
+      // If room is already playing, don't send playback:play (would cause re-sync)
+      // Just activate local player to catch up
+      if (isPlaying) {
+        notify?.('Locked in Sync', 'Your device is now synced to room playback.', 'success');
+      } else {
+        emit('playback:play');
+      }
     } else {
       if (!isPlaying) {
         notify?.('Paused by Host', 'Waiting for room host to start playback.', 'info');

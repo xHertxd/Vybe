@@ -660,9 +660,19 @@ export function useMediaPlayer({
         adapter?.seek(target);
         lastSeekTime.current = Date.now();
       }
-      await adapter?.play();
-      setPhase('ready');
-      setAdapterTick((tick) => tick + 1);
+      // Play without await to keep it in the user gesture scope
+      const playPromise = adapter?.play();
+      if (playPromise && typeof playPromise.then === 'function') {
+        playPromise.then(() => {
+          setPhase('ready');
+          setAdapterTick((tick) => tick + 1);
+        }).catch(() => {
+          setPhase('needs-interaction');
+        });
+      } else {
+        setPhase('ready');
+        setAdapterTick((tick) => tick + 1);
+      }
     } catch {
       setPhase('needs-interaction');
     }
