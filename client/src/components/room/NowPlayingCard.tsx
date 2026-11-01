@@ -251,39 +251,39 @@ export function NowPlayingCard({
 
         <div className="flex items-center gap-1.5">
           {track && (
-            <button
-              type="button"
-              onClick={handleForceSync}
-              className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#40E0D0]/15 hover:bg-[#40E0D0]/25 text-[#40E0D0] border border-[#40E0D0]/30 text-[11px] font-semibold transition-all shadow-[0_0_12px_rgba(64,224,208,0.2)] active:scale-95 cursor-pointer"
-              title="Force synchronize all connected devices to the exact same millisecond"
-            >
-              <RotateCcw className={cn('h-3 w-3', isSyncing && 'animate-spin')} />
-              <span>{isSyncing ? 'Syncing...' : 'Sync All Devices'}</span>
-            </button>
-          )}
+            <>
+              <button
+                type="button"
+                onClick={handleForceSync}
+                className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#40E0D0]/15 hover:bg-[#40E0D0]/25 text-[#40E0D0] border border-[#40E0D0]/30 text-[11px] font-semibold transition-all shadow-[0_0_12px_rgba(64,224,208,0.2)] active:scale-95 cursor-pointer"
+                title="Force synchronize all connected devices to the exact same millisecond"
+              >
+                <RotateCcw className={cn('h-3 w-3', isSyncing && 'animate-spin')} />
+                <span>{isSyncing ? 'Syncing...' : 'Sync All Devices'}</span>
+              </button>
 
-          {track && (
-            <span
-              className={cn(
-                'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[10px] font-medium backdrop-blur-md',
-                inSync ? 'border-[#40E0D0]/30 text-[#40E0D0] bg-[#40E0D0]/10' : 'border-red-400/30 text-red-400 bg-red-400/10'
-              )}
-            >
               <span
-                className={cn('h-1.5 w-1.5 rounded-full', inSync ? 'bg-[#40E0D0]' : 'bg-red-400')}
-              />
-              {isPlaying ? (inSync ? 'Locked in sync' : `${drift}ms drift`) : 'Paused'}
-            </span>
-          )}
+                className={cn(
+                  'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[10px] font-medium backdrop-blur-md',
+                  inSync ? 'border-[#40E0D0]/30 text-[#40E0D0] bg-[#40E0D0]/10' : 'border-red-400/30 text-red-400 bg-red-400/10'
+                )}
+              >
+                <span
+                  className={cn('h-1.5 w-1.5 rounded-full', inSync ? 'bg-[#40E0D0]' : 'bg-red-400')}
+                />
+                {isPlaying ? (inSync ? 'Locked in sync' : `${drift}ms drift`) : 'Paused'}
+              </span>
 
-          {track && (room.settings.automix ?? true) && (
-            <span
-              className="hidden md:inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-white/10 bg-white/5 text-[10px] font-mono text-[#fde5b7]/90"
-              title={`DJ Crossfade active (${room.settings.crossfade ?? 4}s)`}
-            >
-              <Sparkles className="h-2.5 w-2.5 text-[#40E0D0]" />
-              <span>Automix {room.settings.crossfade ?? 4}s</span>
-            </span>
+              {(room.settings.automix ?? true) && (
+                <span
+                  className="hidden md:inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-white/10 bg-white/5 text-[10px] font-mono text-[#fde5b7]/90"
+                  title={`DJ Crossfade active (${room.settings.crossfade ?? 4}s)`}
+                >
+                  <Sparkles className="h-2.5 w-2.5 text-[#40E0D0]" />
+                  <span>Automix {room.settings.crossfade ?? 4}s</span>
+                </span>
+              )}
+            </>
           )}
 
           {/* Full screen option for phones and desktops */}
