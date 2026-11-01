@@ -25,6 +25,43 @@ import { cn } from '../../lib/cn.js';
 import { formatTime, initials } from '../../lib/format.js';
 import { socket } from '../../services/socket.js';
 
+// ─── Drift Indicator: Completely New Logic ───
+// Declarative color map - no ternary in JSX, no magic numbers in component
+const DRIFT_THRESHOLDS = [
+  { max: 50, color: 'text-[#10b981]', label: 'Perfect' },
+  { max: 120, color: 'text-[#10b981]', label: 'Good' },
+  { max: 250, color: 'text-[#f59e0b]', label: 'Fair' },
+  { max: 500, color: 'text-[#ef4444]', label: 'Poor' },
+  { max: Infinity, color: 'text-[#ef4444]', label: 'Critical' },
+] as const;
+
+const DRIFT_OFFLINE = 'text-transparent' as const;
+
+// Pure function - testable, reusable, zero JSX coupling
+function getDriftClass(user: RoomUser): { className: string; label: string } {
+  if (!user.isOnline) return { className: DRIFT_OFFLINE, label: 'Offline' };
+  const abs = Math.abs(user.drift);
+  const threshold = DRIFT_THRESHOLDS.find((t) => abs <= t.max)!;
+  return { className: threshold.color, label: threshold.label };
+}
+
+// Dedicated component - encapsulated, reusable, testable
+function DriftIndicator({ user }: { user: RoomUser }) {
+  const { className, label } = getDriftClass(user);
+  if (!user.isOnline) return null;
+
+  return (
+    <span className="flex items-center gap-1">
+      <span className={cn('font-mono text-[9.5px]', className)}>
+        {Math.round(user.drift)}ms
+      </span>
+      <span className={cn('text-[8px] uppercase tracking-wider', className)}>
+        {label}
+      </span>
+    </span>
+  );
+}
+
 interface SidePanelProps {
   room: RoomState;
   currentUser: RoomUser;
@@ -559,9 +596,7 @@ export function SidePanel({
                           <Wifi className="h-2.5 w-2.5 text-[#10b981]" />
                           {user.ping > 0 ? `${Math.round(user.ping)}ms` : 'online'}
                           <span className="text-white/20">·</span>
-                          <span className={Math.abs(user.drift) < 120 ? 'text-[#10b981]' : 'text-[#f59e0b]'}>
-                            {Math.round(user.drift)}ms drift
-                          </span>
+                          <DriftIndicator user={user} />
                         </>
                       ) : (
                         <>
