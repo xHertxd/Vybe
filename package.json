@@ -1,7 +1,7 @@
 {
   "name": "vybe",
   "version": "2.0.0",
-  "description": "Vybe - One Beat. All Devices",
+  "description": "Vybe - High-Precision Multi-Device Synchronized Music Player",
   "private": true,
   "workspaces": [
     "shared",
@@ -15,11 +15,11 @@
     "build:server": "npm run build --prefix shared && npm run build --prefix server",
     "start": "node server/dist/index.js"
   },
-  "devDependencies": {
+  "dependencies": {
     "concurrently": "^9.1.2",
     "typescript": "^5.8.2"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": "20.x || 22.x || >=25.0.0"
   }
 }
