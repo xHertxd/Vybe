@@ -76,6 +76,10 @@ class NtpClock {
     return Date.now() + this.offset;
   }
 
+  public now(): number {
+    return this.getServerNow();
+  }
+
   public getOffset(): number {
     return this.offset;
   }

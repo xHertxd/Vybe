@@ -483,6 +483,32 @@ export function setupRelayHandlers(io: Server, socket: Socket): void {
     }
   });
 
+  socket.on('room:leave', (payload: { roomCode?: string }) => {
+    const meta = socketToRoom.get(socket.id);
+    const roomCode = payload?.roomCode || meta?.roomCode;
+    if (!roomCode || !rooms.has(roomCode)) return;
+
+    socket.leave(roomCode);
+    socketToRoom.delete(socket.id);
+
+    const room = rooms.get(roomCode)!;
+    room.participants = room.participants.filter((p) => p.id !== socket.id);
+
+    if (room.participants.length === 0) {
+      const timer = setTimeout(() => {
+        rooms.delete(roomCode);
+        cleanupTimers.delete(roomCode);
+      }, 60_000);
+      cleanupTimers.set(roomCode, timer);
+    } else {
+      if (room.hostId === socket.id) {
+        room.participants[0].isHost = true;
+        room.hostId = room.participants[0].id;
+      }
+      io.to(roomCode).emit('room:state', room);
+    }
+  });
+
   socket.on('disconnect', () => {
     const meta = socketToRoom.get(socket.id);
     if (!meta) return;
