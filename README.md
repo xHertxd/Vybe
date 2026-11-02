@@ -92,3 +92,4 @@ npm run build:server
 
 ## 📄 License
 MIT License © 2026 Vybe.
+
