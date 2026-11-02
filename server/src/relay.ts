@@ -10,7 +10,7 @@ import type {
   QueueRemovePayload,
   QueueSkipPayload,
   DriftReportPayload,
-} from '@vybe/shared';
+} from './types.js';
 
 // Ephemeral in-memory store: Zero database, zero disk writes
 const rooms = new Map<string, RoomState>();

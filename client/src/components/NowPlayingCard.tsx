@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import type { Track, PlaybackState } from '@vybe/shared';
+import type { Track, PlaybackState } from '../types.js';
 import { Play, Pause, SkipForward, Volume2, VolumeX, Music, Disc3, Sparkles } from 'lucide-react';
 import { formatSeconds } from '../lib/format.js';
 import { WaveformVisualizer } from './WaveformVisualizer.js';

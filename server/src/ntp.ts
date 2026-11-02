@@ -1,5 +1,5 @@
 import type { Socket } from 'socket.io';
-import type { SyncPingPayload, SyncPongPayload } from '@vybe/shared';
+import type { SyncPingPayload, SyncPongPayload } from './types.js';
 
 export function setupNtpHandler(socket: Socket): void {
   socket.on('sync:ping', (payload: SyncPingPayload) => {

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import type { RoomState, Track } from '@vybe/shared';
+import type { RoomState, Track } from '../types.js';
 import { NowPlayingCard } from '../components/NowPlayingCard.js';
 import { QueueList } from '../components/QueueList.js';
 import { ParticipantList } from '../components/ParticipantList.js';

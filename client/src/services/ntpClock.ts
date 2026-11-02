@@ -1,5 +1,5 @@
 import { socket } from './socket.js';
-import type { SyncPingPayload, SyncPongPayload } from '@vybe/shared';
+import type { SyncPingPayload, SyncPongPayload } from '../types.js';
 
 interface ClockSample {
   offset: number; // serverTime - (clientSendTime + rtt/2)

@@ -1,5 +1,5 @@
 import express, { type Request, type Response } from 'express';
-import type { Track } from '@vybe/shared';
+import type { Track } from './types.js';
 
 const router = express.Router();
 

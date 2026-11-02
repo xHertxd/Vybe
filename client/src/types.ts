@@ -38,7 +38,6 @@ export interface RoomState {
   participants: Participant[];
 }
 
-// Socket Communication Payloads
 export interface SyncPingPayload {
   clientTime: number;
 }
@@ -77,4 +76,3 @@ export interface QueueSkipPayload {
   roomCode: string;
   index?: number;
 }
-

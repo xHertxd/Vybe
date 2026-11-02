@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import type { Track } from '@vybe/shared';
+import type { Track } from '../types.js';
 import { Search, X, Music, Plus, Check, Link as LinkIcon, Upload, Sparkles } from 'lucide-react';
 import { searchFreeToUseTracks } from '../services/freetouse.js';
 import { formatSeconds } from '../lib/format.js';

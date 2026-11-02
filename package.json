@@ -4,15 +4,14 @@
   "description": "Vybe - High-Precision Multi-Device Synchronized Music Player",
   "private": true,
   "workspaces": [
-    "shared",
     "server",
     "client"
   ],
   "scripts": {
     "dev": "concurrently -n \"server,client\" -c \"magenta,cyan\" \"npm run dev --prefix server\" \"npm run dev --prefix client\"",
-    "build": "npm run build --prefix shared && npm run build --prefix client && npm run build --prefix server",
-    "build:client": "npm run build --prefix shared && npm run build --prefix client",
-    "build:server": "npm run build --prefix shared && npm run build --prefix server",
+    "build": "npm run build --prefix client && npm run build --prefix server",
+    "build:client": "npm run build --prefix client",
+    "build:server": "npm run build --prefix server",
     "start": "node server/dist/index.js"
   },
   "dependencies": {

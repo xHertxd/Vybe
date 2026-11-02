@@ -1,5 +1,5 @@
 import React from 'react';
-import type { Track } from '@vybe/shared';
+import type { Track } from '../types.js';
 import { ListMusic, Trash2, Plus, Play, Music } from 'lucide-react';
 import { formatSeconds } from '../lib/format.js';
 

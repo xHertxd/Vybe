@@ -1,4 +1,4 @@
-import type { Track, PlaybackState } from '@vybe/shared';
+import type { Track, PlaybackState } from '../types.js';
 import { ntpClock } from './ntpClock.js';
 import { BACKEND_URL } from './socket.js';
 
@@ -101,16 +101,21 @@ class WebAudioEngine {
     }
 
     const ctx = this.getAudioContext();
-    let fetchUrl = track.url;
 
-    // Use backend proxy for external HTTP/HTTPS audio streams to avoid CORS blocks
-    if (track.url.startsWith('http') && !track.url.includes(window.location.host)) {
-      fetchUrl = `${BACKEND_URL}/api/freetouse/proxy-audio?url=${encodeURIComponent(track.url)}`;
+    // Try direct fetch first (FreeToUse and CDN MP3s have open CORS)
+    let response: Response | null = null;
+    try {
+      response = await fetch(track.url);
+    } catch (err) {
+      // If direct fetch fails and a backend is configured, try backend proxy
+      if (BACKEND_URL && !track.url.startsWith('blob:')) {
+        const proxyUrl = `${BACKEND_URL}/api/freetouse/proxy-audio?url=${encodeURIComponent(track.url)}`;
+        response = await fetch(proxyUrl).catch(() => null);
+      }
     }
 
-    const response = await fetch(fetchUrl);
-    if (!response.ok) {
-      throw new Error(`Failed to load audio: HTTP ${response.status}`);
+    if (!response || !response.ok) {
+      throw new Error(`Failed to load audio for ${track.title}`);
     }
 
     const arrayBuffer = await response.arrayBuffer();

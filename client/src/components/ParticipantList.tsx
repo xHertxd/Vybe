@@ -1,5 +1,5 @@
 import React from 'react';
-import type { Participant } from '@vybe/shared';
+import type { Participant } from '../types.js';
 import { Users, Crown, Smartphone, Laptop, CheckCircle2 } from 'lucide-react';
 
 interface ParticipantListProps {
