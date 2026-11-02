@@ -10,6 +10,7 @@ interface NowPlayingCardProps {
   duration: number;
   isPlayingLocally: boolean;
   volume: number;
+  isConnecting?: boolean;
   onTogglePlayPause: () => void;
   onSeek: (seconds: number) => void;
   onSkipNext: () => void;
@@ -23,6 +24,7 @@ export const NowPlayingCard: React.FC<NowPlayingCardProps> = ({
   duration,
   isPlayingLocally,
   volume,
+  isConnecting = false,
   onTogglePlayPause,
   onSeek,
   onSkipNext,
@@ -109,6 +111,12 @@ export const NowPlayingCard: React.FC<NowPlayingCardProps> = ({
               <Sparkles className="h-3 w-3 text-brand-400" />
               <span>{track.source === 'freetouse' ? 'FreeToUse Direct Stream' : 'Custom Audio'}</span>
             </div>
+          </div>
+        ) : isConnecting ? (
+          <div className="mb-6 flex flex-col items-center">
+            <div className="h-8 w-8 rounded-full border-2 border-brand-500 border-t-transparent animate-spin mb-3" />
+            <h2 className="text-xl font-semibold text-zinc-200">Connecting to Room...</h2>
+            <p className="text-xs text-zinc-400 mt-1">Syncing music queue and audio with host</p>
           </div>
         ) : (
           <div className="mb-6">

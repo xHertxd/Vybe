@@ -61,6 +61,7 @@ export const RoomPage: React.FC<RoomPageProps> = ({
             duration={duration}
             isPlayingLocally={isPlayingLocally}
             volume={volume}
+            isConnecting={!isHost && !room.playback.currentTrack && !room.hostId}
             onTogglePlayPause={onTogglePlayPause}
             onSeek={onSeek}
             onSkipNext={onSkipNext}

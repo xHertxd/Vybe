@@ -56,9 +56,9 @@ export function setupRelayHandlers(io: Server, socket: Socket): void {
   // -------------------------------------------------------------
   // 1. Create Room
   // -------------------------------------------------------------
-  socket.on('room:create', (payload: { username?: string }, callback?: (res: { success: boolean; room?: RoomState; error?: string }) => void) => {
+  socket.on('room:create', (payload: { roomCode?: string; username?: string }, callback?: (res: { success: boolean; room?: RoomState; error?: string }) => void) => {
     try {
-      const roomCode = generateRoomCode();
+      const roomCode = payload?.roomCode?.trim() || generateRoomCode();
       const username = payload?.username?.trim() || `Host_${socket.id.slice(0, 4)}`;
 
       const host: Participant = {

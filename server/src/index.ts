@@ -2,12 +2,19 @@ import express from 'express';
 import http from 'http';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
 import { Server as SocketIOServer } from 'socket.io';
 import { setupNtpHandler } from './ntp.js';
 import { setupRelayHandlers } from './relay.js';
 import freetouseRouter from './freetouse.js';
 
 dotenv.config();
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const clientDist = path.resolve(__dirname, '../../client/dist');
 
 const app = express();
 const server = http.createServer(app);
@@ -44,6 +51,17 @@ app.get('/health', (_req, res) => {
 
 // FreeToUse & Audio proxy router
 app.use('/api/freetouse', freetouseRouter);
+
+// Serve Client static build on Render or Docker fullstack instances
+if (fs.existsSync(clientDist)) {
+  app.use(express.static(clientDist));
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api') || req.path.startsWith('/socket.io') || req.path === '/health') {
+      return next();
+    }
+    res.sendFile(path.join(clientDist, 'index.html'));
+  });
+}
 
 // Socket.IO Connection Setup
 io.on('connection', (socket) => {

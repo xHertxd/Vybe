@@ -11,7 +11,11 @@ function getBackendUrl(): string {
     if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
       return 'http://localhost:10000';
     }
-    // 3. Deployed frontend with backend proxy or custom domain
+    // 3. If deployed on Vercel or other static CDN without an embedded Socket.io server
+    if (window.location.hostname.endsWith('.vercel.app') || window.location.hostname.endsWith('.netlify.app')) {
+      return 'https://vybe-relay.onrender.com';
+    }
+    // 4. Default to same origin (e.g. if served directly from Render or custom fullstack host)
     return window.location.origin;
   }
 

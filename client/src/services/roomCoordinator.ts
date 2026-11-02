@@ -329,9 +329,19 @@ class RoomCoordinator {
       });
     }
 
+    const freshPos = audioEngine.getCurrentPosition();
+    const now = Date.now();
+    const isPlaying = this.currentRoom.playback.status === 'playing';
+
     const updatedRoom: RoomState = {
       ...this.currentRoom,
       participants: updatedParticipants,
+      playback: {
+        ...this.currentRoom.playback,
+        position: freshPos,
+        serverTimestamp: now,
+        scheduledStartTime: isPlaying ? now : null,
+      },
     };
 
     this.notifyState(updatedRoom);
@@ -345,6 +355,32 @@ class RoomCoordinator {
 
   private handleIncomingState(state: RoomState): void {
     if (!state || !state.code) return;
+
+    // 1. Host Protection:
+    // If I am currently the active host with an active queue,
+    // NEVER allow an incoming empty room state to overwrite my active room!
+    if (this.currentRoom && this.currentRoom.hostId === this.selfId) {
+      const myHasTracks = this.currentRoom.queue.length > 0 || Boolean(this.currentRoom.playback.currentTrack);
+      const incomingHasTracks = (state.queue && state.queue.length > 0) || Boolean(state.playback?.currentTrack);
+
+      if (myHasTracks && !incomingHasTracks) {
+        // Assert our authority and re-broadcast our live state back so the joining peer syncs
+        const freshPos = audioEngine.getCurrentPosition();
+        const now = Date.now();
+        const authoritativeRoom: RoomState = {
+          ...this.currentRoom,
+          playback: {
+            ...this.currentRoom.playback,
+            position: freshPos,
+            serverTimestamp: now,
+            scheduledStartTime: this.currentRoom.playback.status === 'playing' ? now : null,
+          },
+        };
+        this.broadcastState(authoritativeRoom);
+        return;
+      }
+    }
+
     this.hasReceivedInitialState = true;
     if (this.joinTimeout) {
       clearTimeout(this.joinTimeout);
@@ -355,9 +391,32 @@ class RoomCoordinator {
       this.syncRetryTimer = null;
     }
 
-    this.currentRoom = state;
-    this.notifyState(state);
-    this.notifyPlayback(state.playback);
+    // Merge self into participants if not present
+    let updatedParticipants = state.participants || [];
+    const selfExists = updatedParticipants.some((p) => p.id === this.selfId);
+    if (!selfExists) {
+      updatedParticipants = [
+        ...updatedParticipants,
+        {
+          id: this.selfId,
+          username: this.username,
+          isHost: state.hostId === this.selfId,
+          driftMs: 0,
+          joinedAt: Date.now(),
+        },
+      ];
+    }
+
+    const mergedState: RoomState = {
+      ...state,
+      participants: updatedParticipants,
+    };
+
+    this.currentRoom = mergedState;
+    this.notifyState(mergedState);
+    if (state.playback) {
+      this.notifyPlayback(state.playback);
+    }
   }
 
   private cleanupMesh(): void {
@@ -452,7 +511,7 @@ class RoomCoordinator {
     this.notifyState(room);
 
     if (socket.connected) {
-      socket.emit('room:create', { username: name });
+      socket.emit('room:create', { roomCode: code, username: name });
     }
 
     return room;
@@ -491,11 +550,17 @@ class RoomCoordinator {
     this.setupP2PRoom(code, false);
     this.notifyState(placeholderRoom);
 
-    // If no existing host responds within 1000ms, assume host role
-    // This allows typing/opening any 6-digit code to immediately enter or create the room!
+    // If no existing host responds after 5 seconds, assume host role
+    // This allows typing/opening any 6-digit code to create the room if it doesn't exist,
+    // while giving plenty of time to receive the real host's songs and queue!
     if (this.joinTimeout) clearTimeout(this.joinTimeout);
     this.joinTimeout = setTimeout(() => {
-      if (this.currentRoom && this.currentRoom.code === code && (!this.currentRoom.hostId || this.currentRoom.hostId === '')) {
+      if (
+        !this.hasReceivedInitialState &&
+        this.currentRoom &&
+        this.currentRoom.code === code &&
+        (!this.currentRoom.hostId || this.currentRoom.hostId === '')
+      ) {
         const claimedRoom: RoomState = {
           ...this.currentRoom,
           hostId: this.selfId,
@@ -504,9 +569,9 @@ class RoomCoordinator {
           ),
         };
         this.notifyState(claimedRoom);
-        this.broadcastState(claimedRoom);
+        // Do NOT broadcast an empty state across channels, so we never clobber active peers!
       }
-    }, 1000);
+    }, 5000);
 
     if (socket.connected) {
       socket.emit('room:join', { roomCode: code, username: name });
