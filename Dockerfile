@@ -1,22 +1,18 @@
-# Multi-stage Dockerfile for Vybe Backend Server
-# syntax = docker/dockerfile:1.4
 FROM node:20-alpine AS builder
 
-WORKDIR /app/server
+WORKDIR /app
 
-# Copy server package manifests first for layer caching
-COPY server/package.json server/package-lock.json ./
+COPY package.json ./
+COPY shared/package.json ./shared/
+COPY server/package.json ./server/
 
-# Install all dependencies required for building
-RUN npm ci
+RUN npm install
 
-# Copy server source code
-COPY server/ ./
+COPY shared/ ./shared/
+COPY server/ ./server/
 
-# Build TypeScript to /app/server/dist
-RUN npm run build
+RUN npm run build:server
 
-# --- Production Runner Stage ---
 FROM node:20-alpine AS runner
 
 WORKDIR /app
@@ -24,24 +20,16 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=10000
 
-# Copy server package manifests
-COPY server/package.json server/package-lock.json ./
+COPY package.json ./
+COPY shared/package.json ./shared/
+COPY server/package.json ./server/
 
-# Install production dependencies only
-RUN npm ci --omit=dev
+RUN npm install --omit=dev
 
-# Copy compiled files from builder stage
-COPY --from=builder /app/server/dist ./dist
+COPY --from=builder /app/shared/dist ./shared/dist
+COPY --from=builder /app/server/dist ./server/dist
 
-# Create uploads directory
-RUN mkdir -p /app/uploads
-
-# Expose Render / standard port
 EXPOSE 10000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:${PORT}/health || exit 1
+CMD ["node", "server/dist/index.js"]
 
-# Start server
-CMD ["node", "dist/index.js"]

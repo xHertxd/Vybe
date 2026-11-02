@@ -1,26 +1,25 @@
 {
   "name": "vybe",
-  "version": "1.0.0",
-  "description": "Vybe - Synchronized Multi-Device Music & Media Player",
+  "version": "2.0.0",
+  "description": "Vybe - One Beat. All Devices",
+  "private": true,
   "workspaces": [
-    "client",
+    "shared",
     "server",
-    "packages/shared"
+    "client"
   ],
   "scripts": {
-    "dev": "concurrently -n \"server,client\" -c \"magenta,cyan\" \"npm run server\" \"npm run client\"",
-    "server": "npm --prefix server run dev",
-    "client": "npm --prefix client run dev",
-    "build": "npm --prefix client install --include=dev && npm --prefix client run build && npm --prefix server install --include=dev && npm --prefix server run build",
-    "build:client": "npm --prefix client install --include=dev && npm --prefix client run build",
-    "build:server": "npm --prefix server install --include=dev && npm --prefix server run build",
-    "start": "npm --prefix server run start"
+    "dev": "concurrently -n \"server,client\" -c \"magenta,cyan\" \"npm run dev --prefix server\" \"npm run dev --prefix client\"",
+    "build": "npm run build --prefix shared && npm run build --prefix client && npm run build --prefix server",
+    "build:client": "npm run build --prefix shared && npm run build --prefix client",
+    "build:server": "npm run build --prefix shared && npm run build --prefix server",
+    "start": "node server/dist/index.js"
   },
-  "dependencies": {
+  "devDependencies": {
     "concurrently": "^9.1.2",
     "typescript": "^5.8.2"
   },
   "engines": {
-    "node": "20.x || 22.x"
+    "node": ">=20.0.0"
   }
 }

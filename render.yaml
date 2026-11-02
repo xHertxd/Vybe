@@ -1,10 +1,11 @@
 services:
   - type: web
-    name: vybe-backend
-    runtime: docker
+    name: vybe-relay
+    env: node
     plan: free
     region: oregon
-    dockerfilePath: ./Dockerfile
+    buildCommand: npm install && npm run build:server
+    startCommand: npm start
     healthCheckPath: /health
     autoDeploy: true
     envVars:
@@ -12,8 +13,4 @@ services:
         value: production
       - key: PORT
         value: 10000
-      - key: ALLOWED_ORIGINS
-        value: "*"
-      - key: DISCONNECT_GRACE_MS
-        value: 15000
 
