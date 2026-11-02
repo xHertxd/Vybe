@@ -1,9 +1,24 @@
 import { joinRoom } from 'trystero';
 import type { RoomState, Participant, Track, PlaybackState } from '../types.js';
 import { socket } from './socket.js';
+import { audioEngine } from './audioEngine.js';
 
 type StateListener = (room: RoomState) => void;
 type PlaybackListener = (playback: PlaybackState) => void;
+
+interface JoinHelloPayload {
+  id: string;
+  username: string;
+}
+
+interface ClockPingPayload {
+  t0: number;
+}
+
+interface ClockPongPayload {
+  t0: number;
+  t1: number;
+}
 
 class RoomCoordinator {
   private currentRoom: RoomState | null = null;
@@ -11,27 +26,43 @@ class RoomCoordinator {
   private broadcastChannel: BroadcastChannel | null = null;
   private selfId: string;
   private username: string;
+  private peerClockOffset = 0;
 
   private stateListeners = new Set<StateListener>();
   private playbackListeners = new Set<PlaybackListener>();
 
-  // Trystero action handlers
+  // State sync retry & heartbeat timers
+  private syncRetryTimer: ReturnType<typeof setInterval> | null = null;
+  private hostHeartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  private joinTimeout: ReturnType<typeof setTimeout> | null = null;
+  private hasReceivedInitialState = false;
+
+  // Trystero action transmitters
+  private sendHello: ((data: JoinHelloPayload, peerId?: string) => void) | null = null;
   private sendRoomState: ((data: RoomState, peerId?: string) => void) | null = null;
   private sendPlaybackSync: ((data: PlaybackState, peerId?: string) => void) | null = null;
-  private sendStateRequest: ((data: { from: string }, peerId?: string) => void) | null = null;
   private sendDrift: ((data: { peerId: string; driftMs: number }) => void) | null = null;
+  private sendClockPing: ((data: ClockPingPayload, peerId?: string) => void) | null = null;
+  private sendClockPong: ((data: ClockPongPayload, peerId?: string) => void) | null = null;
+  private sendKick: ((data: { targetId: string }, peerId?: string) => void) | null = null;
 
   constructor() {
     this.selfId = 'p_' + Math.random().toString(36).slice(2, 9);
     this.username = typeof window !== 'undefined'
-      ? localStorage.getItem('vybe_username') || `User_${this.selfId.slice(2, 6)}`
+      ? localStorage.getItem('vybe_username') || `Guest_${this.selfId.slice(2, 6)}`
       : 'Guest';
 
+    // Link audio engine to our peer clock offset provider
+    audioEngine.setClockProvider(() => Date.now() + this.peerClockOffset);
     this.setupSocketBridge();
   }
 
   public getSelfId(): string {
     return this.selfId;
+  }
+
+  public getUsername(): string {
+    return this.username;
   }
 
   public getCurrentRoom(): RoomState | null {
@@ -63,10 +94,14 @@ class RoomCoordinator {
   }
 
   /**
-   * Connects to Trystero WebRTC mesh and local BroadcastChannel for zero-backend communication.
+   * Sets up multi-layer peer-to-peer mesh:
+   * 1. BroadcastChannel (0ms tab sync)
+   * 2. Trystero WebRTC mesh (cross-device serverless sync with clock ping-pong)
    */
   private setupP2PRoom(roomCode: string, isHost: boolean): void {
-    this.leaveP2PRoom();
+    this.cleanupMesh();
+    this.hasReceivedInitialState = isHost;
+    this.peerClockOffset = 0;
 
     try {
       // 1. Same-device tab sync via BroadcastChannel
@@ -75,52 +110,95 @@ class RoomCoordinator {
         const { type, payload, sender } = event.data || {};
         if (sender === this.selfId) return;
 
-        if (type === 'state') {
-          this.handleIncomingState(payload);
-        } else if (type === 'playback') {
-          this.notifyPlayback(payload);
-        } else if (type === 'request_state') {
+        if (type === 'hello') {
           if (this.currentRoom && this.currentRoom.hostId === this.selfId) {
+            this.handleParticipantJoined(payload.id, payload.username);
             this.broadcastChannel?.postMessage({
               type: 'state',
               payload: this.currentRoom,
               sender: this.selfId,
             });
           }
+        } else if (type === 'state') {
+          this.handleIncomingState(payload);
+        } else if (type === 'playback') {
+          this.notifyPlayback(payload);
+        } else if (type === 'kick') {
+          if (payload?.targetId === this.selfId) {
+            this.handleWasKicked();
+          }
         }
       };
 
-      // 2. Cross-device WebRTC mesh via Trystero
-      this.trysteroRoom = joinRoom({ appId: 'vybe-sync-v2' }, roomCode);
+      // 2. Cross-device WebRTC mesh via Trystero with Google and Cloudflare STUN servers
+      this.trysteroRoom = joinRoom(
+        {
+          appId: 'vybe-sync-v2',
+          rtcConfig: {
+            iceServers: [
+              { urls: 'stun:stun.l.google.com:19302' },
+              { urls: 'stun:stun1.l.google.com:19302' },
+              { urls: 'stun:stun2.l.google.com:19302' },
+              { urls: 'stun:stun.cloudflare.com:3478' },
+            ],
+          },
+        },
+        roomCode
+      );
 
+      const [sendHello, getHello] = this.trysteroRoom.makeAction('hello');
       const [sendState, getState] = this.trysteroRoom.makeAction('state');
       const [sendPlayback, getPlayback] = this.trysteroRoom.makeAction('playback');
-      const [sendReq, getReq] = this.trysteroRoom.makeAction('req_state');
       const [sendDriftReport, getDriftReport] = this.trysteroRoom.makeAction('drift');
+      const [sendClockPing, getClockPing] = this.trysteroRoom.makeAction('clock_ping');
+      const [sendClockPong, getClockPong] = this.trysteroRoom.makeAction('clock_pong');
+      const [sendKick, getKick] = this.trysteroRoom.makeAction('kick');
 
+      this.sendHello = sendHello;
       this.sendRoomState = sendState;
       this.sendPlaybackSync = sendPlayback;
-      this.sendStateRequest = sendReq;
       this.sendDrift = sendDriftReport;
+      this.sendClockPing = sendClockPing;
+      this.sendClockPong = sendClockPong;
+      this.sendKick = sendKick;
+
+      const getFreshHostState = (): RoomState | null => {
+        if (!this.currentRoom) return null;
+        const freshPos = audioEngine.getCurrentPosition();
+        const now = Date.now();
+        return {
+          ...this.currentRoom,
+          playback: {
+            ...this.currentRoom.playback,
+            position: freshPos,
+            serverTimestamp: now,
+            scheduledStartTime: this.currentRoom.playback.status === 'playing' ? now : null,
+          },
+        };
+      };
+
+      // Handle receiving join hello handshake
+      getHello((data: JoinHelloPayload, peerId: string) => {
+        if (!this.currentRoom) return;
+
+        if (this.currentRoom.hostId === this.selfId || isHost) {
+          this.handleParticipantJoined(data.id || peerId, data.username);
+          const fresh = getFreshHostState() || this.currentRoom;
+          sendState(fresh, peerId);
+        }
+      });
 
       // Handle receiving room state
       getState((state: RoomState, _peerId: string) => {
         this.handleIncomingState(state);
       });
 
-      // Handle receiving playback changes (play, pause, seek, automix)
+      // Handle receiving playback updates
       getPlayback((playback: PlaybackState, _peerId: string) => {
         this.notifyPlayback(playback);
       });
 
-      // Handle state requests from new joiners
-      getReq((_req: { from: string }, peerId: string) => {
-        if (this.currentRoom && (this.currentRoom.hostId === this.selfId || isHost)) {
-          sendState(this.currentRoom, peerId);
-        }
-      });
-
-      // Handle drift updates for participant dashboard
+      // Handle receiving drift updates
       getDriftReport((data: { peerId: string; driftMs: number }) => {
         if (!this.currentRoom) return;
         const updated = this.currentRoom.participants.map((p) =>
@@ -129,33 +207,39 @@ class RoomCoordinator {
         this.notifyState({ ...this.currentRoom, participants: updated });
       });
 
-      // When a new peer joins the room
-      this.trysteroRoom.onPeerJoin((peerId: string) => {
-        if (!this.currentRoom) return;
+      // Handle clock ping (responder returns their timestamp)
+      getClockPing((data: ClockPingPayload, peerId: string) => {
+        sendClockPong({ t0: data.t0, t1: Date.now() }, peerId);
+      });
 
-        // If I am the host, send them the current state immediately!
-        if (this.currentRoom.hostId === this.selfId) {
-          sendState(this.currentRoom, peerId);
-        }
+      // Handle clock pong (calculate clock offset relative to host)
+      getClockPong((data: ClockPongPayload) => {
+        const now = Date.now();
+        const rtt = Math.max(0, now - data.t0);
+        this.peerClockOffset = Math.round(data.t1 + rtt / 2 - now);
+      });
 
-        // Add peer to participants if not present
-        const exists = this.currentRoom.participants.some((p) => p.id === peerId);
-        if (!exists) {
-          const newParticipant: Participant = {
-            id: peerId,
-            username: `Guest_${peerId.slice(0, 4)}`,
-            isHost: false,
-            driftMs: 0,
-            joinedAt: Date.now(),
-          };
-          this.notifyState({
-            ...this.currentRoom,
-            participants: [...this.currentRoom.participants, newParticipant],
-          });
+      // Handle kick action
+      getKick((data: { targetId: string }) => {
+        if (data.targetId === this.selfId) {
+          this.handleWasKicked();
         }
       });
 
-      // When a peer leaves
+      // When a new WebRTC peer connects
+      this.trysteroRoom.onPeerJoin((peerId: string) => {
+        if (!this.currentRoom) return;
+
+        if (this.currentRoom.hostId === this.selfId || isHost) {
+          const fresh = getFreshHostState() || this.currentRoom;
+          sendState(fresh, peerId);
+        } else {
+          sendHello({ id: this.selfId, username: this.username }, peerId);
+          sendClockPing({ t0: Date.now() }, peerId);
+        }
+      });
+
+      // When a peer disconnects
       this.trysteroRoom.onPeerLeave((peerId: string) => {
         if (!this.currentRoom) return;
         const filtered = this.currentRoom.participants.filter((p) => p.id !== peerId);
@@ -167,28 +251,128 @@ class RoomCoordinator {
         this.notifyState({ ...this.currentRoom, participants: filtered, hostId });
       });
 
-      // If joining as peer, broadcast request for current state
+      // 3. For Joiner: Continuous handshake & clock ping retry until state is received
       if (!isHost) {
-        sendReq({ from: this.selfId });
-        this.broadcastChannel.postMessage({
-          type: 'request_state',
-          payload: { from: this.selfId },
-          sender: this.selfId,
-        });
+        const sendJoinHandshake = () => {
+          if (this.hasReceivedInitialState) {
+            if (this.syncRetryTimer) {
+              clearInterval(this.syncRetryTimer);
+              this.syncRetryTimer = null;
+            }
+            return;
+          }
+
+          const payload: JoinHelloPayload = { id: this.selfId, username: this.username };
+          this.sendHello?.(payload);
+          this.sendClockPing?.({ t0: Date.now() });
+          this.broadcastChannel?.postMessage({
+            type: 'hello',
+            payload,
+            sender: this.selfId,
+          });
+        };
+
+        sendJoinHandshake();
+        this.syncRetryTimer = setInterval(sendJoinHandshake, 800);
+      } else {
+        // 4. For Host: Heartbeat every 2.5s with live position snapshot
+        this.hostHeartbeatTimer = setInterval(() => {
+          if (this.currentRoom && this.currentRoom.hostId === this.selfId && this.currentRoom.playback.status === 'playing') {
+            const livePos = audioEngine.getCurrentPosition();
+            const now = Date.now();
+            const livePlayback: PlaybackState = {
+              ...this.currentRoom.playback,
+              position: livePos,
+              serverTimestamp: now,
+              scheduledStartTime: now,
+              playbackRate: 1.0,
+            };
+            this.currentRoom.playback = livePlayback;
+            this.sendPlaybackSync?.(livePlayback);
+            this.broadcastChannel?.postMessage({
+              type: 'playback',
+              payload: livePlayback,
+              sender: this.selfId,
+            });
+          }
+        }, 2500);
       }
     } catch (err) {
-      console.warn('[RoomCoordinator] P2P mesh setup error:', err);
+      console.warn('[RoomCoordinator] Mesh setup error:', err);
     }
+  }
+
+  private handleWasKicked(): void {
+    alert('You have been removed from the room by the host.');
+    this.leaveRoom();
+    if (typeof window !== 'undefined') {
+      window.history.replaceState(null, '', '/');
+      window.location.href = '/';
+    }
+  }
+
+  private handleParticipantJoined(id: string, username: string): void {
+    if (!this.currentRoom) return;
+
+    const existingIdx = this.currentRoom.participants.findIndex((p) => p.id === id);
+    const updatedParticipants = [...this.currentRoom.participants];
+
+    if (existingIdx !== -1) {
+      updatedParticipants[existingIdx].username = username;
+    } else {
+      updatedParticipants.push({
+        id,
+        username,
+        isHost: false,
+        driftMs: 0,
+        joinedAt: Date.now(),
+      });
+    }
+
+    const updatedRoom: RoomState = {
+      ...this.currentRoom,
+      participants: updatedParticipants,
+    };
+
+    this.notifyState(updatedRoom);
+    this.sendRoomState?.(updatedRoom);
+    this.broadcastChannel?.postMessage({
+      type: 'state',
+      payload: updatedRoom,
+      sender: this.selfId,
+    });
   }
 
   private handleIncomingState(state: RoomState): void {
     if (!state || !state.code) return;
+    this.hasReceivedInitialState = true;
+    if (this.joinTimeout) {
+      clearTimeout(this.joinTimeout);
+      this.joinTimeout = null;
+    }
+    if (this.syncRetryTimer) {
+      clearInterval(this.syncRetryTimer);
+      this.syncRetryTimer = null;
+    }
+
     this.currentRoom = state;
     this.notifyState(state);
     this.notifyPlayback(state.playback);
   }
 
-  private leaveP2PRoom(): void {
+  private cleanupMesh(): void {
+    if (this.joinTimeout) {
+      clearTimeout(this.joinTimeout);
+      this.joinTimeout = null;
+    }
+    if (this.syncRetryTimer) {
+      clearInterval(this.syncRetryTimer);
+      this.syncRetryTimer = null;
+    }
+    if (this.hostHeartbeatTimer) {
+      clearInterval(this.hostHeartbeatTimer);
+      this.hostHeartbeatTimer = null;
+    }
     if (this.trysteroRoom) {
       try {
         this.trysteroRoom.leave();
@@ -215,13 +399,21 @@ class RoomCoordinator {
 
     socket.on('room:joined', (data: { room: RoomState }) => {
       if (data?.room) {
+        if (this.joinTimeout) {
+          clearTimeout(this.joinTimeout);
+          this.joinTimeout = null;
+        }
         this.handleIncomingState(data.room);
       }
+    });
+
+    socket.on('room:kicked', () => {
+      this.handleWasKicked();
     });
   }
 
   // -------------------------------------------------------------------------
-  // Public Room Actions (Autonomous, Zero Delay)
+  // Public Room Actions
   // -------------------------------------------------------------------------
 
   public createRoom(username?: string): RoomState {
@@ -299,6 +491,23 @@ class RoomCoordinator {
     this.setupP2PRoom(code, false);
     this.notifyState(placeholderRoom);
 
+    // If no existing host responds within 1000ms, assume host role
+    // This allows typing/opening any 6-digit code to immediately enter or create the room!
+    if (this.joinTimeout) clearTimeout(this.joinTimeout);
+    this.joinTimeout = setTimeout(() => {
+      if (this.currentRoom && this.currentRoom.code === code && (!this.currentRoom.hostId || this.currentRoom.hostId === '')) {
+        const claimedRoom: RoomState = {
+          ...this.currentRoom,
+          hostId: this.selfId,
+          participants: this.currentRoom.participants.map((p) =>
+            p.id === this.selfId ? { ...p, isHost: true } : p
+          ),
+        };
+        this.notifyState(claimedRoom);
+        this.broadcastState(claimedRoom);
+      }
+    }, 1000);
+
     if (socket.connected) {
       socket.emit('room:join', { roomCode: code, username: name });
     }
@@ -307,7 +516,7 @@ class RoomCoordinator {
   }
 
   public leaveRoom(): void {
-    this.leaveP2PRoom();
+    this.cleanupMesh();
     this.currentRoom = null;
   }
 
@@ -336,7 +545,7 @@ class RoomCoordinator {
         currentTrack: track,
         position: currentPosition,
         serverTimestamp: now,
-        scheduledStartTime: now + 400,
+        scheduledStartTime: now + 300,
         playbackRate: 1.0,
       };
     }
@@ -361,7 +570,7 @@ class RoomCoordinator {
       currentTrack: this.currentRoom.playback.currentTrack,
       position: Math.max(0, positionSec),
       serverTimestamp: now,
-      scheduledStartTime: isPlaying ? now + 400 : null,
+      scheduledStartTime: isPlaying ? now + 300 : null,
       playbackRate: 1.0,
     };
 
@@ -391,7 +600,7 @@ class RoomCoordinator {
         currentTrack: track,
         position: 0,
         serverTimestamp: now,
-        scheduledStartTime: now + 400,
+        scheduledStartTime: now + 300,
         playbackRate: 1.0,
       };
     }
@@ -410,6 +619,121 @@ class RoomCoordinator {
 
     if (socket.connected) {
       socket.emit('queue:add', { roomCode: this.currentRoom.code, track });
+    }
+  }
+
+  public addMultipleToQueue(tracks: Track[]): void {
+    if (!this.currentRoom || tracks.length === 0) return;
+
+    const updatedQueue = [...this.currentRoom.queue, ...tracks];
+    const isFirstTrack = !this.currentRoom.playback.currentTrack || this.currentRoom.playback.status === 'stopped';
+
+    let updatedPlayback = this.currentRoom.playback;
+    let queueIndex = this.currentRoom.queueIndex;
+
+    if (isFirstTrack) {
+      queueIndex = this.currentRoom.queue.length;
+      const now = Date.now();
+      updatedPlayback = {
+        status: 'playing',
+        currentTrack: tracks[0],
+        position: 0,
+        serverTimestamp: now,
+        scheduledStartTime: now + 300,
+        playbackRate: 1.0,
+      };
+    }
+
+    const updatedRoom: RoomState = {
+      ...this.currentRoom,
+      queue: updatedQueue,
+      queueIndex,
+      playback: updatedPlayback,
+    };
+
+    this.broadcastState(updatedRoom);
+    if (isFirstTrack) {
+      this.broadcastPlayback(updatedPlayback);
+    }
+
+    if (socket.connected) {
+      socket.emit('queue:add_multiple', { roomCode: this.currentRoom.code, tracks });
+    }
+  }
+
+  public reorderQueue(fromIndex: number, toIndex: number): void {
+    if (!this.currentRoom) return;
+    const { queue } = this.currentRoom;
+    if (fromIndex < 0 || fromIndex >= queue.length || toIndex < 0 || toIndex >= queue.length) return;
+
+    const updated = [...queue];
+    const [moved] = updated.splice(fromIndex, 1);
+    updated.splice(toIndex, 0, moved);
+
+    // Keep current playing item synchronized with index
+    let newQueueIndex = this.currentRoom.queueIndex;
+    if (this.currentRoom.queueIndex === fromIndex) {
+      newQueueIndex = toIndex;
+    } else if (fromIndex < this.currentRoom.queueIndex && toIndex >= this.currentRoom.queueIndex) {
+      newQueueIndex -= 1;
+    } else if (fromIndex > this.currentRoom.queueIndex && toIndex <= this.currentRoom.queueIndex) {
+      newQueueIndex += 1;
+    }
+
+    const updatedRoom: RoomState = {
+      ...this.currentRoom,
+      queue: updated,
+      queueIndex: newQueueIndex,
+    };
+
+    this.broadcastState(updatedRoom);
+
+    if (socket.connected) {
+      socket.emit('queue:reorder', { roomCode: this.currentRoom.code, fromIndex, toIndex });
+    }
+  }
+
+  public transferAdmin(newHostId: string): void {
+    if (!this.currentRoom) return;
+
+    const updatedParticipants = this.currentRoom.participants.map((p) => ({
+      ...p,
+      isHost: p.id === newHostId,
+    }));
+
+    const updatedRoom: RoomState = {
+      ...this.currentRoom,
+      hostId: newHostId,
+      participants: updatedParticipants,
+    };
+
+    this.broadcastState(updatedRoom);
+
+    if (socket.connected) {
+      socket.emit('room:transfer_host', { roomCode: this.currentRoom.code, newHostId });
+    }
+  }
+
+  public kickParticipant(targetUserId: string): void {
+    if (!this.currentRoom) return;
+
+    this.sendKick?.({ targetId: targetUserId });
+    this.broadcastChannel?.postMessage({
+      type: 'kick',
+      payload: { targetId: targetUserId },
+      sender: this.selfId,
+    });
+
+    const filtered = this.currentRoom.participants.filter((p) => p.id !== targetUserId);
+    const updatedRoom: RoomState = {
+      ...this.currentRoom,
+      participants: filtered,
+    };
+
+    this.broadcastState(updatedRoom);
+
+    if (socket.connected) {
+      socket.emit('room:kick', { roomCode: this.currentRoom.code, targetUserId });
     }
   }
 
@@ -446,7 +770,7 @@ class RoomCoordinator {
       currentTrack: nextTrack,
       position: 0,
       serverTimestamp: now,
-      scheduledStartTime: now + 400,
+      scheduledStartTime: now + 300,
       playbackRate: 1.0,
     };
 

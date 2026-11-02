@@ -11,13 +11,23 @@ export const HomePage: React.FC<HomePageProps> = ({ onCreateRoom, onJoinRoom }) 
     () => localStorage.getItem('vybe_username') || `Guest_${Math.floor(1000 + Math.random() * 9000)}`
   );
   const [joinCode, setJoinCode] = useState('');
+  const [isAutoEntering, setIsAutoEntering] = useState(false);
 
   // Check URL query params for ?room=123456
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const roomParam = params.get('room');
     if (roomParam) {
-      setJoinCode(roomParam.trim());
+      const code = roomParam.trim().replace(/\D/g, '').slice(0, 6);
+      if (code.length === 6) {
+        setJoinCode(code);
+        setIsAutoEntering(true);
+        const name = username.trim() || `Guest_${Math.floor(1000 + Math.random() * 9000)}`;
+        localStorage.setItem('vybe_username', name);
+        onJoinRoom(code, name);
+      } else {
+        setJoinCode(code);
+      }
     }
   }, []);
 
@@ -28,11 +38,26 @@ export const HomePage: React.FC<HomePageProps> = ({ onCreateRoom, onJoinRoom }) 
     onCreateRoom(username.trim());
   };
 
-  const handleJoin = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!username.trim() || !joinCode.trim()) return;
+  const handleJoin = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const cleanCode = joinCode.trim();
+    if (!username.trim() || cleanCode.length < 6) return;
     localStorage.setItem('vybe_username', username.trim());
-    onJoinRoom(joinCode.trim(), username.trim());
+    setIsAutoEntering(true);
+    onJoinRoom(cleanCode, username.trim());
+  };
+
+  const handleCodeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const cleaned = e.target.value.replace(/\D/g, '').slice(0, 6);
+    setJoinCode(cleaned);
+
+    // Auto-enter immediately as soon as 6 digits are entered without waiting for button click!
+    if (cleaned.length === 6) {
+      const activeName = username.trim() || `Guest_${Math.floor(1000 + Math.random() * 9000)}`;
+      localStorage.setItem('vybe_username', activeName);
+      setIsAutoEntering(true);
+      onJoinRoom(cleaned, activeName);
+    }
   };
 
   return (
@@ -85,22 +110,34 @@ export const HomePage: React.FC<HomePageProps> = ({ onCreateRoom, onJoinRoom }) 
             <div className="h-px bg-white/10 flex-1" />
           </div>
 
-          <form onSubmit={handleJoin} className="flex gap-2">
-            <input
-              type="text"
-              maxLength={6}
-              value={joinCode}
-              onChange={(e) => setJoinCode(e.target.value.replace(/\D/g, ''))}
-              placeholder="6-digit code"
-              className="flex-1 rounded-2xl bg-white/5 border border-white/10 px-4 py-3 text-center font-mono text-base font-bold tracking-widest text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-500/60"
-            />
-            <button
-              type="submit"
-              disabled={joinCode.length < 6}
-              className="rounded-2xl bg-white/10 hover:bg-white/15 disabled:opacity-40 disabled:pointer-events-none px-5 py-3 text-sm font-bold text-white border border-white/10 transition-all flex items-center justify-center"
-            >
-              <ArrowRight className="h-4 w-4" />
-            </button>
+          <form onSubmit={handleJoin} className="space-y-2">
+            <div className="flex gap-2">
+              <input
+                type="text"
+                maxLength={6}
+                value={joinCode}
+                onChange={handleCodeChange}
+                placeholder="6-digit code"
+                disabled={isAutoEntering}
+                className={`flex-1 rounded-2xl bg-white/5 border px-4 py-3 text-center font-mono text-base font-bold tracking-widest text-white placeholder-zinc-500 focus:outline-none transition-all ${
+                  joinCode.length === 6
+                    ? 'border-cyan-500 shadow-lg shadow-cyan-500/20'
+                    : 'border-white/10 focus:border-cyan-500/60'
+                }`}
+              />
+              <button
+                type="submit"
+                disabled={joinCode.length < 6 || isAutoEntering}
+                className="rounded-2xl bg-white/10 hover:bg-white/15 disabled:opacity-40 disabled:pointer-events-none px-5 py-3 text-sm font-bold text-white border border-white/10 transition-all flex items-center justify-center"
+              >
+                <ArrowRight className="h-4 w-4" />
+              </button>
+            </div>
+            {joinCode.length === 6 && (
+              <p className="text-[11px] font-mono text-center text-cyan-400 animate-pulse">
+                Auto-entering room {joinCode}...
+              </p>
+            )}
           </form>
         </div>
       </div>

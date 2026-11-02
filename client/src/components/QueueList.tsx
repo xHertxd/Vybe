@@ -1,12 +1,13 @@
 import React from 'react';
 import type { Track } from '../types.js';
-import { ListMusic, Trash2, Plus, Play, Music } from 'lucide-react';
+import { ListMusic, Trash2, Plus, Play, Music, ChevronUp, ChevronDown } from 'lucide-react';
 import { formatSeconds } from '../lib/format.js';
 
 interface QueueListProps {
   queue: Track[];
   queueIndex: number;
   onRemoveTrack: (trackId: string) => void;
+  onReorderTrack?: (fromIndex: number, toIndex: number) => void;
   onOpenSearch: () => void;
 }
 
@@ -14,6 +15,7 @@ export const QueueList: React.FC<QueueListProps> = ({
   queue,
   queueIndex,
   onRemoveTrack,
+  onReorderTrack,
   onOpenSearch,
 }) => {
   return (
@@ -49,7 +51,13 @@ export const QueueList: React.FC<QueueListProps> = ({
                     : 'bg-white/[0.02] border border-white/[0.04] hover:bg-white/[0.06]'
                 }`}
               >
-                <div className="flex items-center gap-3 min-w-0">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  {/* Position number */}
+                  <span className="w-4 text-center font-mono text-[10px] text-zinc-500">
+                    {idx + 1}
+                  </span>
+
+                  {/* Thumbnail */}
                   <div className="h-9 w-9 rounded-lg overflow-hidden shrink-0 bg-zinc-800 flex items-center justify-center">
                     {track.coverUrl ? (
                       <img src={track.coverUrl} alt={track.title} className="h-full w-full object-cover" />
@@ -57,6 +65,7 @@ export const QueueList: React.FC<QueueListProps> = ({
                       <Music className="h-4 w-4 text-zinc-500" />
                     )}
                   </div>
+
                   <div className="min-w-0">
                     <p className={`text-xs font-semibold truncate ${isCurrent ? 'text-brand-200' : 'text-zinc-200'}`}>
                       {track.title}
@@ -65,7 +74,29 @@ export const QueueList: React.FC<QueueListProps> = ({
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2.5 shrink-0">
+                <div className="flex items-center gap-2 shrink-0">
+                  {/* Reorder controls */}
+                  {onReorderTrack && queue.length > 1 && (
+                    <div className="flex flex-col opacity-60 group-hover:opacity-100 transition-opacity">
+                      <button
+                        disabled={idx === 0}
+                        onClick={() => onReorderTrack(idx, idx - 1)}
+                        className="p-0.5 text-zinc-400 hover:text-white disabled:opacity-20 disabled:pointer-events-none transition-colors"
+                        title="Move Up"
+                      >
+                        <ChevronUp className="h-3 w-3" />
+                      </button>
+                      <button
+                        disabled={idx === queue.length - 1}
+                        onClick={() => onReorderTrack(idx, idx + 1)}
+                        className="p-0.5 text-zinc-400 hover:text-white disabled:opacity-20 disabled:pointer-events-none transition-colors"
+                        title="Move Down"
+                      >
+                        <ChevronDown className="h-3 w-3" />
+                      </button>
+                    </div>
+                  )}
+
                   {isCurrent ? (
                     <span className="flex items-center gap-1 font-mono text-[10px] text-brand-400 font-medium">
                       <Play className="h-2.5 w-2.5 fill-current" />
@@ -76,6 +107,7 @@ export const QueueList: React.FC<QueueListProps> = ({
                       {formatSeconds(track.duration)}
                     </span>
                   )}
+
                   <button
                     onClick={() => onRemoveTrack(track.id)}
                     className="opacity-0 group-hover:opacity-100 text-zinc-500 hover:text-red-400 transition-all p-1"

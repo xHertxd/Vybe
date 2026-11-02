@@ -1,50 +1,118 @@
 import type { Track, PlaybackState } from '../types.js';
-import { ntpClock } from './ntpClock.js';
-import { BACKEND_URL } from './socket.js';
 
 type DriftListener = (driftMs: number) => void;
 type StateListener = (isPlaying: boolean, currentTime: number, duration: number) => void;
 
-class WebAudioEngine {
+class SynchronizedAudioEngine {
   private ctx: AudioContext | null = null;
   private masterGain: GainNode | null = null;
   private analyser: AnalyserNode | null = null;
-  private currentSource: AudioBufferSourceNode | null = null;
+  private mediaSourceNode: MediaElementAudioSourceNode | null = null;
+  private audioEl: HTMLAudioElement | null = null;
 
-  private bufferCache = new Map<string, AudioBuffer>();
-  private activeTrackId: string | null = null;
-
-  // Track timing references
-  private trackStartTimeAudioCtx = 0;
-  private trackStartOffsetSec = 0;
-  private trackDurationSec = 0;
+  private currentTrackId: string | null = null;
   private isLocallyPlaying = false;
+  private lastSeekTimestamp = 0;
+  private lastPlaybackState: PlaybackState | null = null;
+
+  // External clock offset provider (from roomCoordinator peer sync)
+  private getReferenceNow: () => number = () => Date.now();
 
   private driftMonitorTimer: ReturnType<typeof setInterval> | null = null;
-  private lastScheduledPlaybackState: PlaybackState | null = null;
-
   private driftListeners = new Set<DriftListener>();
   private stateListeners = new Set<StateListener>();
   private onTrackEndedCallback: (() => void) | null = null;
 
   constructor() {
-    // Lazy AudioContext initialization on first user interaction
+    this.setupAudioElement();
+  }
+
+  public setClockProvider(provider: () => number): void {
+    this.getReferenceNow = provider;
+  }
+
+  private setupAudioElement(): void {
+    if (typeof window === 'undefined') return;
+
+    const audio = new Audio();
+    audio.crossOrigin = 'anonymous';
+    audio.preload = 'auto';
+
+    audio.onplay = () => {
+      this.isLocallyPlaying = true;
+      this.notifyState();
+    };
+
+    audio.onpause = () => {
+      this.isLocallyPlaying = false;
+      this.notifyState();
+    };
+
+    audio.onended = () => {
+      this.isLocallyPlaying = false;
+      this.notifyState();
+      this.onTrackEndedCallback?.();
+    };
+
+    audio.ontimeupdate = () => {
+      this.notifyState();
+    };
+
+    audio.onerror = () => {
+      console.warn('[AudioEngine] Audio element load issue, falling back without crossOrigin');
+      if (audio.crossOrigin) {
+        audio.crossOrigin = null;
+        if (this.lastPlaybackState?.currentTrack?.url) {
+          audio.src = this.lastPlaybackState.currentTrack.url;
+          audio.load();
+          if (this.lastPlaybackState.status === 'playing') {
+            void audio.play().catch(() => {});
+          }
+        }
+      }
+    };
+
+    this.audioEl = audio;
+
+    // Global interaction listener: first touch/click/key automatically unlocks audio
+    const unlockOnInteraction = async () => {
+      window.removeEventListener('click', unlockOnInteraction);
+      window.removeEventListener('keydown', unlockOnInteraction);
+      window.removeEventListener('touchstart', unlockOnInteraction);
+      await this.unlock();
+      if (this.lastPlaybackState && this.lastPlaybackState.status === 'playing' && this.audioEl && this.audioEl.paused) {
+        void this.syncPlayback(this.lastPlaybackState);
+      }
+    };
+    window.addEventListener('click', unlockOnInteraction, { passive: true });
+    window.addEventListener('keydown', unlockOnInteraction, { passive: true });
+    window.addEventListener('touchstart', unlockOnInteraction, { passive: true });
   }
 
   public getAudioContext(): AudioContext {
     if (!this.ctx) {
-      const AudioCtxClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const AudioCtxClass =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       this.ctx = new AudioCtxClass();
 
       this.masterGain = this.ctx.createGain();
-      this.masterGain.gain.value = 1.0;
+      this.masterGain.gain.value = 0.85;
 
       this.analyser = this.ctx.createAnalyser();
       this.analyser.fftSize = 128;
       this.analyser.smoothingTimeConstant = 0.8;
 
-      this.masterGain.connect(this.analyser);
-      this.analyser.connect(this.ctx.destination);
+      if (this.audioEl) {
+        try {
+          this.mediaSourceNode = this.ctx.createMediaElementSource(this.audioEl);
+          this.mediaSourceNode.connect(this.analyser);
+          this.analyser.connect(this.masterGain);
+          this.masterGain.connect(this.ctx.destination);
+        } catch (e) {
+          console.warn('[AudioEngine] MediaElementSource warning:', e);
+        }
+      }
     }
     return this.ctx;
   }
@@ -54,9 +122,7 @@ class WebAudioEngine {
     if (ctx.state === 'suspended') {
       try {
         await ctx.resume();
-      } catch {
-        return false;
-      }
+      } catch {}
     }
     return ctx.state === 'running';
   }
@@ -69,11 +135,13 @@ class WebAudioEngine {
     return this.analyser;
   }
 
-  public setVolume(volume: number): void {
-    if (!this.masterGain) this.getAudioContext();
-    if (this.masterGain) {
-      const clamped = Math.max(0, Math.min(1, volume));
-      this.masterGain.gain.setValueAtTime(clamped, this.getAudioContext().currentTime);
+  public setVolume(vol: number): void {
+    const clamped = Math.max(0, Math.min(1, vol));
+    if (this.audioEl) {
+      this.audioEl.volume = clamped;
+    }
+    if (this.masterGain && this.ctx) {
+      this.masterGain.gain.setValueAtTime(clamped, this.ctx.currentTime);
     }
   }
 
@@ -91,197 +159,147 @@ class WebAudioEngine {
     return () => this.stateListeners.delete(fn);
   }
 
-  /**
-   * Fetches and decodes an audio file into PCM memory.
-   * Uses proxy endpoint if the direct URL might trigger CORS issues.
-   */
-  public async loadBuffer(track: Track): Promise<AudioBuffer> {
-    if (this.bufferCache.has(track.id)) {
-      return this.bufferCache.get(track.id)!;
-    }
+  public getCurrentPosition(): number {
+    return this.audioEl ? this.audioEl.currentTime : 0;
+  }
 
-    const ctx = this.getAudioContext();
-
-    // Try direct fetch first (FreeToUse and CDN MP3s have open CORS)
-    let response: Response | null = null;
-    try {
-      response = await fetch(track.url);
-    } catch (err) {
-      // If direct fetch fails and a backend is configured, try backend proxy
-      if (BACKEND_URL && !track.url.startsWith('blob:')) {
-        const proxyUrl = `${BACKEND_URL}/api/freetouse/proxy-audio?url=${encodeURIComponent(track.url)}`;
-        response = await fetch(proxyUrl).catch(() => null);
-      }
-    }
-
-    if (!response || !response.ok) {
-      throw new Error(`Failed to load audio for ${track.title}`);
-    }
-
-    const arrayBuffer = await response.arrayBuffer();
-    const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
-
-    this.bufferCache.set(track.id, audioBuffer);
-    return audioBuffer;
+  public getDuration(): number {
+    return this.audioEl && !isNaN(this.audioEl.duration) ? this.audioEl.duration : 0;
   }
 
   /**
-   * Applies authoritative server playback state using sub-millisecond hardware scheduling.
+   * Applies authoritative synchronized playback state across all devices.
    */
   public async syncPlayback(playback: PlaybackState): Promise<void> {
-    this.lastScheduledPlaybackState = playback;
+    this.lastPlaybackState = playback;
+    if (!this.audioEl) return;
 
     if (!playback.currentTrack || playback.status !== 'playing') {
-      this.stop();
+      this.pause();
+      if (playback.position !== undefined && Math.abs(this.audioEl.currentTime - playback.position) > 0.5) {
+        this.audioEl.currentTime = playback.position;
+      }
       return;
     }
 
     const track = playback.currentTrack;
+    const isNewTrack = this.currentTrackId !== track.id || this.audioEl.src !== track.url;
 
-    try {
-      // Ensure AudioContext is initialized
-      const ctx = this.getAudioContext();
-      if (ctx.state === 'suspended') {
-        await ctx.resume().catch(() => {});
-      }
+    if (isNewTrack) {
+      this.currentTrackId = track.id;
+      this.audioEl.src = track.url;
+      this.audioEl.load();
+    }
 
-      // Load or retrieve decoded buffer
-      const buffer = await this.loadBuffer(track);
-      this.trackDurationSec = buffer.duration;
+    // Compute target position from synchronized reference timeline
+    const refNow = this.getReferenceNow();
+    let waitMs = 0;
+    let targetOffset = playback.position;
 
-      // Stop previous active audio source node
-      this.stopCurrentSourceNode();
+    if (playback.scheduledStartTime && playback.scheduledStartTime > refNow) {
+      waitMs = playback.scheduledStartTime - refNow;
+    } else {
+      const anchor = playback.scheduledStartTime ?? playback.serverTimestamp;
+      const elapsed = Math.max(0, refNow - anchor) / 1000;
+      targetOffset = playback.position + elapsed * (playback.playbackRate || 1.0);
+    }
 
-      // Compute exact scheduling offsets
-      const serverNow = ntpClock.getServerNow();
-      let waitMs = 0;
-      let offsetSec = playback.position;
+    // Seek if noticeably out of sync
+    const currentAudioTime = this.audioEl.currentTime;
+    if (isNewTrack || Math.abs(currentAudioTime - targetOffset) > 0.35) {
+      try {
+        this.audioEl.currentTime = Math.max(0, targetOffset);
+        this.lastSeekTimestamp = Date.now();
+      } catch {}
+    }
 
-      if (playback.scheduledStartTime && playback.scheduledStartTime > serverNow) {
-        // Scheduled to start in the future (play / seek / track change)
-        waitMs = playback.scheduledStartTime - serverNow;
-      } else {
-        // Playing continuously (joining mid-song or resuming)
-        const anchor = playback.scheduledStartTime ?? playback.serverTimestamp;
-        const elapsedSec = Math.max(0, serverNow - anchor) / 1000;
-        offsetSec = playback.position + elapsedSec * (playback.playbackRate || 1.0);
-      }
-
-      if (offsetSec >= buffer.duration) {
-        // Track already ended
-        return;
-      }
-
-      // Hardware AudioContext timestamp
-      const targetAudioCtxTime = ctx.currentTime + Math.max(0, waitMs / 1000);
-
-      const source = ctx.createBufferSource();
-      source.buffer = buffer;
-      source.playbackRate.value = playback.playbackRate || 1.0;
-      source.connect(this.masterGain!);
-
-      source.onended = () => {
-        if (this.currentSource === source) {
-          this.isLocallyPlaying = false;
-          this.onTrackEndedCallback?.();
+    // Schedule play
+    const executePlay = async () => {
+      try {
+        await this.unlock();
+        if (this.audioEl && playback.status === 'playing') {
+          this.audioEl.playbackRate = 1.0;
+          await this.audioEl.play();
+          this.startDriftMonitor();
         }
-      };
+      } catch (err) {
+        console.warn('[AudioEngine] Playback was prevented (needs user interaction):', err);
+      }
+    };
 
-      source.start(targetAudioCtxTime, Math.max(0, offsetSec));
-
-      this.currentSource = source;
-      this.activeTrackId = track.id;
-      this.trackStartTimeAudioCtx = targetAudioCtxTime;
-      this.trackStartOffsetSec = offsetSec;
-      this.isLocallyPlaying = true;
-
-      this.startDriftMonitor();
-    } catch (err) {
-      console.warn('[AudioEngine] Playback sync failed:', err);
+    if (waitMs > 10) {
+      setTimeout(() => {
+        void executePlay();
+      }, waitMs);
+    } else {
+      void executePlay();
     }
   }
 
-  public stop(): void {
-    this.stopCurrentSourceNode();
+  public pause(): void {
+    if (this.audioEl) {
+      this.audioEl.pause();
+    }
     this.stopDriftMonitor();
     this.isLocallyPlaying = false;
     this.notifyState();
   }
 
-  private stopCurrentSourceNode(): void {
-    if (this.currentSource) {
-      try {
-        this.currentSource.onended = null;
-        this.currentSource.stop();
-        this.currentSource.disconnect();
-      } catch {}
-      this.currentSource = null;
+  public stop(): void {
+    this.pause();
+    if (this.audioEl) {
+      this.audioEl.currentTime = 0;
     }
-  }
-
-  /**
-   * Returns current playback position in seconds based on hardware audio context clock.
-   */
-  public getCurrentPosition(): number {
-    if (!this.ctx || !this.isLocallyPlaying) {
-      return this.trackStartOffsetSec;
-    }
-
-    const elapsedAudioTime = this.ctx.currentTime - this.trackStartTimeAudioCtx;
-    if (elapsedAudioTime < 0) {
-      return this.trackStartOffsetSec; // Still waiting for scheduled start
-    }
-
-    const currentPos = this.trackStartOffsetSec + elapsedAudioTime;
-    return Math.min(this.trackDurationSec, Math.max(0, currentPos));
   }
 
   /**
    * Phase-Locked Loop (PLL) micro-adjustments:
-   * Keeps drift strictly bounded below 5ms without audio artifacts.
+   * Keeps audio strictly aligned across devices using smooth rate micro-adjustments
+   * without any restart loops or audio stutter!
    */
   private startDriftMonitor(): void {
     this.stopDriftMonitor();
 
     this.driftMonitorTimer = setInterval(() => {
-      if (!this.isLocallyPlaying || !this.lastScheduledPlaybackState || !this.currentSource || !this.ctx) {
+      if (!this.audioEl || this.audioEl.paused || !this.lastPlaybackState || this.lastPlaybackState.status !== 'playing') {
         return;
       }
 
-      const serverNow = ntpClock.getServerNow();
-      const playback = this.lastScheduledPlaybackState;
-
-      // Expected theoretical server position right now
+      const refNow = this.getReferenceNow();
+      const playback = this.lastPlaybackState;
       const anchor = playback.scheduledStartTime ?? playback.serverTimestamp;
-      if (serverNow < anchor) return; // Prior to scheduled start
+      if (refNow < anchor) return;
 
-      const elapsedServerSec = (serverNow - anchor) / 1000;
-      const expectedServerPos = playback.position + elapsedServerSec * (playback.playbackRate || 1.0);
+      const elapsedSec = (refNow - anchor) / 1000;
+      const expectedPos = playback.position + elapsedSec * (playback.playbackRate || 1.0);
+      const actualPos = this.audioEl.currentTime;
 
-      const actualLocalPos = this.getCurrentPosition();
-      const driftSec = actualLocalPos - expectedServerPos;
+      const driftSec = actualPos - expectedPos;
       const driftMs = Math.round(driftSec * 1000);
 
       this.driftListeners.forEach((fn) => fn(driftMs));
       this.notifyState();
 
-      // Phase-Locked Loop (PLL) correction
       const absDriftMs = Math.abs(driftMs);
-      if (absDriftMs <= 5) {
-        // Locked in phase!
-        this.currentSource.playbackRate.value = 1.0;
-      } else if (absDriftMs <= 80) {
-        // Seamless micro-adjustment: adjust rate by 0.2% (inaudible pitch change)
+
+      // Smooth micro-tuning: never restart the track!
+      if (absDriftMs <= 15) {
+        // Locked in sync
+        this.audioEl.playbackRate = 1.0;
+      } else if (absDriftMs <= 300) {
+        // Inaudible micro-adjustment: 0.5% rate change
         if (driftMs > 0) {
-          this.currentSource.playbackRate.value = 0.998; // ahead -> slow down
+          this.audioEl.playbackRate = 0.992; // Slightly ahead -> slow down
         } else {
-          this.currentSource.playbackRate.value = 1.002; // behind -> catch up
+          this.audioEl.playbackRate = 1.008; // Slightly behind -> speed up
         }
-      } else if (absDriftMs > 150) {
-        // Significant desync (e.g. background tab throttling) -> realign seamlessly
-        this.syncPlayback(playback);
+      } else if (absDriftMs > 1500 && Date.now() - this.lastSeekTimestamp > 3000) {
+        // Only hard seek if massive desync (> 1.5s) and not recently seeked
+        this.audioEl.currentTime = expectedPos;
+        this.audioEl.playbackRate = 1.0;
+        this.lastSeekTimestamp = Date.now();
       }
-    }, 600);
+    }, 500);
   }
 
   private stopDriftMonitor(): void {
@@ -293,9 +311,9 @@ class WebAudioEngine {
 
   private notifyState(): void {
     const pos = this.getCurrentPosition();
-    this.stateListeners.forEach((fn) => fn(this.isLocallyPlaying, pos, this.trackDurationSec));
+    const dur = this.getDuration();
+    this.stateListeners.forEach((fn) => fn(this.isLocallyPlaying, pos, dur));
   }
 }
 
-export const audioEngine = new WebAudioEngine();
-
+export const audioEngine = new SynchronizedAudioEngine();

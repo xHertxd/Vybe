@@ -67,6 +67,27 @@ export interface QueueAddPayload {
   track: Track;
 }
 
+export interface QueueAddMultiplePayload {
+  roomCode: string;
+  tracks: Track[];
+}
+
+export interface QueueReorderPayload {
+  roomCode: string;
+  fromIndex: number;
+  toIndex: number;
+}
+
+export interface AdminTransferPayload {
+  roomCode: string;
+  newHostId: string;
+}
+
+export interface KickParticipantPayload {
+  roomCode: string;
+  targetUserId: string;
+}
+
 export interface QueueRemovePayload {
   roomCode: string;
   trackId: string;
@@ -76,3 +97,4 @@ export interface QueueSkipPayload {
   roomCode: string;
   index?: number;
 }
+

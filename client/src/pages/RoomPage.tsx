@@ -19,6 +19,10 @@ interface RoomPageProps {
   onSkipNext: () => void;
   onVolumeChange: (vol: number) => void;
   onAddToQueue: (track: Track) => void;
+  onAddMultipleToQueue?: (tracks: Track[]) => void;
+  onReorderQueue?: (fromIndex: number, toIndex: number) => void;
+  onTransferAdmin?: (newHostId: string) => void;
+  onKickParticipant?: (targetUserId: string) => void;
   onRemoveFromQueue: (trackId: string) => void;
 }
 
@@ -35,6 +39,10 @@ export const RoomPage: React.FC<RoomPageProps> = ({
   onSkipNext,
   onVolumeChange,
   onAddToQueue,
+  onAddMultipleToQueue,
+  onReorderQueue,
+  onTransferAdmin,
+  onKickParticipant,
   onRemoveFromQueue,
 }) => {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -67,12 +75,16 @@ export const RoomPage: React.FC<RoomPageProps> = ({
             queue={room.queue}
             queueIndex={room.queueIndex}
             onRemoveTrack={onRemoveFromQueue}
+            onReorderTrack={onReorderQueue}
             onOpenSearch={() => setIsSearchOpen(true)}
           />
 
           <ParticipantList
             participants={room.participants}
             selfId={selfId}
+            isHost={isHost}
+            onTransferAdmin={onTransferAdmin}
+            onKickParticipant={onKickParticipant}
           />
         </div>
       </div>
@@ -82,6 +94,7 @@ export const RoomPage: React.FC<RoomPageProps> = ({
         isOpen={isSearchOpen}
         onClose={() => setIsSearchOpen(false)}
         onAddTrack={onAddToQueue}
+        onAddMultipleTracks={onAddMultipleToQueue}
       />
     </div>
   );

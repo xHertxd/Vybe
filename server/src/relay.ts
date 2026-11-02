@@ -7,6 +7,10 @@ import type {
   JoinRoomPayload,
   PlaybackControlPayload,
   QueueAddPayload,
+  QueueAddMultiplePayload,
+  QueueReorderPayload,
+  AdminTransferPayload,
+  KickParticipantPayload,
   QueueRemovePayload,
   QueueSkipPayload,
   DriftReportPayload,
@@ -100,9 +104,46 @@ export function setupRelayHandlers(io: Server, socket: Socket): void {
   socket.on('room:join', (payload: JoinRoomPayload, callback?: (res: { success: boolean; room?: RoomState; error?: string }) => void) => {
     try {
       const roomCode = payload?.roomCode?.trim();
-      if (!roomCode || !rooms.has(roomCode)) {
-        callback?.({ success: false, error: 'Room not found. Check the 6-digit code.' });
-        socket.emit('room:error', { message: 'Room not found.' });
+      if (!roomCode) {
+        callback?.({ success: false, error: 'Room code required.' });
+        return;
+      }
+
+      // If room doesn't exist, create it immediately with the requested code!
+      if (!rooms.has(roomCode)) {
+        const username = payload?.username?.trim() || `Host_${socket.id.slice(0, 4)}`;
+        const host: Participant = {
+          id: socket.id,
+          username,
+          isHost: true,
+          driftMs: 0,
+          joinedAt: Date.now(),
+        };
+
+        const initialPlayback: PlaybackState = {
+          status: 'stopped',
+          currentTrack: null,
+          position: 0,
+          serverTimestamp: Date.now(),
+          scheduledStartTime: null,
+          playbackRate: 1.0,
+        };
+
+        const room: RoomState = {
+          code: roomCode,
+          hostId: socket.id,
+          playback: initialPlayback,
+          queue: [],
+          queueIndex: 0,
+          participants: [host],
+        };
+
+        rooms.set(roomCode, room);
+        socketToRoom.set(socket.id, { roomCode, participantId: socket.id });
+        socket.join(roomCode);
+
+        socket.emit('room:joined', { room, isHost: true, selfId: socket.id });
+        callback?.({ success: true, room });
         return;
       }
 
@@ -340,6 +381,90 @@ export function setupRelayHandlers(io: Server, socket: Socket): void {
       io.to(roomCode).emit('room:state', room);
       io.to(roomCode).emit('playback:sync', room.playback);
     }
+  });
+
+  socket.on('queue:add_multiple', (payload: QueueAddMultiplePayload) => {
+    const meta = socketToRoom.get(socket.id);
+    const roomCode = payload?.roomCode || meta?.roomCode;
+    if (!roomCode || !rooms.has(roomCode) || !payload?.tracks?.length) return;
+
+    const room = rooms.get(roomCode)!;
+    const wasEmpty = !room.playback.currentTrack || room.playback.status === 'stopped';
+    room.queue.push(...payload.tracks);
+
+    if (wasEmpty && room.queue.length > 0) {
+      room.queueIndex = room.queue.length - payload.tracks.length;
+      const now = Date.now();
+      room.playback = {
+        status: 'playing',
+        currentTrack: payload.tracks[0],
+        position: 0,
+        serverTimestamp: now,
+        scheduledStartTime: now + SCHEDULE_DELAY_MS,
+        playbackRate: 1.0,
+      };
+      io.to(roomCode).emit('playback:sync', room.playback);
+    }
+
+    io.to(roomCode).emit('room:state', room);
+  });
+
+  socket.on('queue:reorder', (payload: QueueReorderPayload) => {
+    const meta = socketToRoom.get(socket.id);
+    const roomCode = payload?.roomCode || meta?.roomCode;
+    if (!roomCode || !rooms.has(roomCode)) return;
+
+    const room = rooms.get(roomCode)!;
+    const { fromIndex, toIndex } = payload;
+    if (fromIndex < 0 || fromIndex >= room.queue.length || toIndex < 0 || toIndex >= room.queue.length) return;
+
+    const [moved] = room.queue.splice(fromIndex, 1);
+    room.queue.splice(toIndex, 0, moved);
+
+    if (room.queueIndex === fromIndex) {
+      room.queueIndex = toIndex;
+    } else if (fromIndex < room.queueIndex && toIndex >= room.queueIndex) {
+      room.queueIndex -= 1;
+    } else if (fromIndex > room.queueIndex && toIndex <= room.queueIndex) {
+      room.queueIndex += 1;
+    }
+
+    io.to(roomCode).emit('room:state', room);
+  });
+
+  socket.on('room:transfer_host', (payload: AdminTransferPayload) => {
+    const meta = socketToRoom.get(socket.id);
+    const roomCode = payload?.roomCode || meta?.roomCode;
+    if (!roomCode || !rooms.has(roomCode)) return;
+
+    const room = rooms.get(roomCode)!;
+    if (room.hostId !== socket.id) return; // Only current host can transfer
+
+    room.hostId = payload.newHostId;
+    room.participants.forEach((p) => {
+      p.isHost = p.id === payload.newHostId;
+    });
+
+    io.to(roomCode).emit('room:state', room);
+  });
+
+  socket.on('room:kick', (payload: KickParticipantPayload) => {
+    const meta = socketToRoom.get(socket.id);
+    const roomCode = payload?.roomCode || meta?.roomCode;
+    if (!roomCode || !rooms.has(roomCode)) return;
+
+    const room = rooms.get(roomCode)!;
+    if (room.hostId !== socket.id) return; // Only host can kick
+
+    const targetSocket = io.sockets.sockets.get(payload.targetUserId);
+    if (targetSocket) {
+      targetSocket.emit('room:kicked', { reason: 'Removed by host' });
+      targetSocket.leave(roomCode);
+      socketToRoom.delete(payload.targetUserId);
+    }
+
+    room.participants = room.participants.filter((p) => p.id !== payload.targetUserId);
+    io.to(roomCode).emit('room:state', room);
   });
 
   // -------------------------------------------------------------

@@ -8,9 +8,15 @@ interface SearchModalProps {
   isOpen: boolean;
   onClose: () => void;
   onAddTrack: (track: Track) => void;
+  onAddMultipleTracks?: (tracks: Track[]) => void;
 }
 
-export const SearchModal: React.FC<SearchModalProps> = ({ isOpen, onClose, onAddTrack }) => {
+export const SearchModal: React.FC<SearchModalProps> = ({
+  isOpen,
+  onClose,
+  onAddTrack,
+  onAddMultipleTracks,
+}) => {
   const [activeTab, setActiveTab] = useState<'freetouse' | 'custom'>('freetouse');
   const [searchQuery, setSearchQuery] = useState('');
   const [results, setResults] = useState<Track[]>([]);
@@ -74,23 +80,54 @@ export const SearchModal: React.FC<SearchModalProps> = ({ isOpen, onClose, onAdd
     onClose();
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
 
-    const localUrl = URL.createObjectURL(file);
-    const track: Track = {
-      id: `upload_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-      title: file.name.replace(/\.[^/.]+$/, ''),
-      artist: 'Local File',
-      url: localUrl,
-      duration: 200,
-      coverUrl: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=400&q=80',
-      source: 'upload',
-    };
+    const fileList = Array.from(files);
+    const newTracks: Track[] = [];
 
-    onAddTrack(track);
-    onClose();
+    for (let i = 0; i < fileList.length; i++) {
+      const file = fileList[i];
+      const localUrl = URL.createObjectURL(file);
+
+      let duration = 200;
+      try {
+        const audio = new Audio();
+        audio.src = localUrl;
+        await new Promise<void>((resolve) => {
+          audio.onloadedmetadata = () => {
+            if (audio.duration && !isNaN(audio.duration) && isFinite(audio.duration)) {
+              duration = Math.round(audio.duration);
+            }
+            resolve();
+          };
+          audio.onerror = () => resolve();
+          setTimeout(resolve, 350);
+        });
+      } catch {
+        // Fallback default duration
+      }
+
+      newTracks.push({
+        id: `upload_${Date.now()}_${i}_${Math.random().toString(36).slice(2, 6)}`,
+        title: file.name.replace(/\.[^/.]+$/, ''),
+        artist: 'Local Audio',
+        url: localUrl,
+        duration,
+        coverUrl: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=400&q=80',
+        source: 'upload',
+      });
+    }
+
+    if (newTracks.length > 0) {
+      if (onAddMultipleTracks) {
+        onAddMultipleTracks(newTracks);
+      } else {
+        newTracks.forEach(onAddTrack);
+      }
+      onClose();
+    }
   };
 
   if (!isOpen) return null;
@@ -284,14 +321,15 @@ export const SearchModal: React.FC<SearchModalProps> = ({ isOpen, onClose, onAdd
             <div className="pt-4 border-t border-white/5">
               <h3 className="text-xs font-bold text-zinc-300 mb-3 flex items-center gap-1.5">
                 <Upload className="h-3.5 w-3.5 text-brand-400" />
-                <span>Upload Local Audio File (.mp3, .wav, .m4a)</span>
+                <span>Upload Local Audio Files (.mp3, .wav, .m4a)</span>
               </h3>
               <label className="flex flex-col items-center justify-center border-2 border-dashed border-white/10 hover:border-brand-500/50 rounded-2xl p-6 cursor-pointer bg-white/[0.02] hover:bg-white/[0.04] transition-all">
                 <Music className="h-8 w-8 text-zinc-500 mb-2" />
-                <span className="text-xs font-medium text-zinc-300">Choose an audio file</span>
-                <span className="text-[10px] text-zinc-500 mt-1">Plays instantly in sample-sync across peers</span>
+                <span className="text-xs font-medium text-zinc-300">Choose audio file(s)</span>
+                <span className="text-[10px] text-zinc-400 mt-1">Select one or multiple files at once</span>
                 <input
                   type="file"
+                  multiple
                   accept="audio/*"
                   onChange={handleFileUpload}
                   className="hidden"

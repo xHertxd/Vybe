@@ -97,6 +97,22 @@ export function useRoom() {
     roomCoordinator.addToQueue(track);
   }, []);
 
+  const addMultipleToQueue = useCallback((tracks: Track[]) => {
+    roomCoordinator.addMultipleToQueue(tracks);
+  }, []);
+
+  const reorderQueue = useCallback((fromIndex: number, toIndex: number) => {
+    roomCoordinator.reorderQueue(fromIndex, toIndex);
+  }, []);
+
+  const transferAdmin = useCallback((newHostId: string) => {
+    roomCoordinator.transferAdmin(newHostId);
+  }, []);
+
+  const kickParticipant = useCallback((targetUserId: string) => {
+    roomCoordinator.kickParticipant(targetUserId);
+  }, []);
+
   const removeFromQueue = useCallback((trackId: string) => {
     roomCoordinator.removeFromQueue(trackId);
   }, []);
@@ -123,6 +139,10 @@ export function useRoom() {
     seek,
     skipNext,
     addToQueue,
+    addMultipleToQueue,
+    reorderQueue,
+    transferAdmin,
+    kickParticipant,
     removeFromQueue,
     setVolume,
     unlockAudio,
